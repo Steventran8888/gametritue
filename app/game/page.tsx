@@ -168,7 +168,7 @@ export default function GamePage() {
           const col = LEVEL_COLORS[lv]
           const done = Object.keys(scores).filter(k => k.startsWith(`${lv}-`)).length
           return (
-            <button key={lv} onClick={() => setScreen('puzzles') || setLevel(lv)}
+            <button key={lv} onClick={() => { setScreen('puzzles'); setLevel(lv) }}
               className="bg-white rounded-xl p-4 text-left shadow-sm border border-gray-100 hover:shadow-md transition"
               style={{ borderTop: `3px solid ${col}` }}>
               <div className="text-xs font-semibold mb-1" style={{ color: col }}>Level {lv}</div>

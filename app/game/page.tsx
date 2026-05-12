@@ -26,6 +26,9 @@ export default function GamePage() {
   const [highlights] = useState(new Set<string>())
   const [scores, setScores] = useState<Record<string, number>>({})
   const [lastScore, setLastScore] = useState(0)
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [leaderboard, setLeaderboard] = useState<{id:string,username:string,total_score:number}[]>([])
+  const [lbLoading, setLbLoading] = useState(false)
 
   const puzzle = PUZZLES[level]?.[puzzleNum-1]?.puzzle || []
   const solution = PUZZLES[level]?.[puzzleNum-1]?.solution || []
@@ -133,6 +136,20 @@ export default function GamePage() {
   setScores(prev => ({ ...prev, [key]: sc }))
   }
 
+  async function openLeaderboard() {
+    setShowLeaderboard(true)
+    if (leaderboard.length > 0) return
+    setLbLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('players')
+      .select('id, username, total_score')
+      .order('total_score', { ascending: false })
+      .limit(20)
+    setLeaderboard(data || [])
+    setLbLoading(false)
+  }
+
   function handleKey(e: React.KeyboardEvent) {
     if (screen !== 'game' || !selected || !running) return
     const [r, c] = selected
@@ -155,11 +172,60 @@ export default function GamePage() {
   // LEVEL SELECT
   if (screen === 'levels') return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-10 px-4">
+      {showLeaderboard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setShowLeaderboard(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-bold text-gray-800">🏆 Bảng xếp hạng</h2>
+              <button onClick={() => setShowLeaderboard(false)} className="text-gray-400 text-lg leading-none">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {lbLoading ? (
+                <p className="text-center text-gray-400 py-10 text-sm">Đang tải...</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-400 uppercase border-b border-gray-100">
+                      <th className="py-2 pl-5 text-left w-8">#</th>
+                      <th className="py-2 text-left">Tên</th>
+                      <th className="py-2 pr-5 text-right">Điểm</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboard.map((p, i) => {
+                      const isMe = p.id === player.id
+                      return (
+                        <tr key={p.id}
+                          className={`border-b border-gray-50 ${isMe ? 'bg-blue-50' : ''}`}>
+                          <td className={`py-2.5 pl-5 font-bold ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-600' : 'text-gray-400'}`}>
+                            {i + 1}
+                          </td>
+                          <td className={`py-2.5 ${isMe ? 'font-semibold text-blue-700' : 'text-gray-700'}`}>
+                            {p.username}{isMe ? ' (bạn)' : ''}
+                          </td>
+                          <td className="py-2.5 pr-5 text-right font-semibold text-gray-800">
+                            {(p.total_score || 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between w-full max-w-lg mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Sudoku</h1>
         <div className="text-sm text-gray-500 flex items-center gap-3">
           <span className="font-semibold text-yellow-600">{player.total_coins} 🪙</span>
-          <span className="font-semibold text-blue-600">{Object.values(scores).reduce((sum, s) => sum + s, 0)} pt</span>
+          <button onClick={openLeaderboard} className="flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 transition">
+            <span>🏆</span>
+            <span>{Object.values(scores).reduce((sum, s) => sum + s, 0)} pt</span>
+          </button>
           <span className="text-gray-400">{player.username}</span>
         </div>
       </div>

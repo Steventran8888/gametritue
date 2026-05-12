@@ -145,7 +145,7 @@ export default function GamePage() {
       .from('players')
       .select('id, username, total_score')
       .order('total_score', { ascending: false })
-      .limit(20)
+      .limit(100)
     setLeaderboard(data || [])
     setLbLoading(false)
   }

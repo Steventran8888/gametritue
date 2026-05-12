@@ -48,14 +48,10 @@ export default function LoginPage() {
         {/* Center: logo + tagline */}
         <div className="flex-1 flex flex-col items-center justify-center gap-5 text-center z-10">
           <div className="relative" style={{ width: 220, height: 220 }}>
-            <span
-              className="absolute inset-0 flex items-center justify-center font-bold select-none"
-              style={{ fontSize: 88, color: '#3b4bc8' }}
-            >G</span>
             <img
               src={LOGO_URL}
               alt="Gametritue"
-              className="absolute inset-0 w-full h-full object-contain"
+              className="w-full h-full object-contain"
               onError={e => { e.currentTarget.style.display = 'none' }}
             />
           </div>
@@ -74,11 +70,11 @@ export default function LoginPage() {
             <div key={text} className="flex items-center gap-3">
               <div
                 className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: '#3b4bc8' }}
+                style={{ background: 'rgba(255,255,255,0.3)' }}
               >
                 <span className="text-white text-xs leading-none">✓</span>
               </div>
-              <span className="text-sm" style={{ color: '#475569' }}>{text}</span>
+              <span className="text-sm text-white">{text}</span>
             </div>
           ))}
         </div>
@@ -119,13 +115,10 @@ export default function LoginPage() {
         {/* Mobile logo (hidden on desktop) */}
         <div className="flex md:hidden flex-col items-center gap-3 mb-8">
           <div className="relative" style={{ width: 56, height: 56 }}>
-            <span
-              className="absolute inset-0 flex items-center justify-center font-bold text-2xl select-none text-white"
-            >G</span>
             <img
               src={LOGO_URL}
               alt=""
-              className="absolute inset-0 w-full h-full object-contain"
+              className="w-full h-full object-contain"
               onError={e => { e.currentTarget.style.display = 'none' }}
             />
           </div>

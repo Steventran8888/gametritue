@@ -79,32 +79,13 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {/* 4-layer wave at bottom — 35% height */}
-        <div
-          className="absolute bottom-0 left-0 right-0 pointer-events-none select-none"
-          style={{ height: '35%' }}
-        >
-          <svg
-            viewBox="0 0 800 320"
-            xmlns="http://www.w3.org/2000/svg"
-            preserveAspectRatio="none"
-            className="w-full h-full"
-            style={{ display: 'block' }}
-          >
-            {/* Layer 1 — orange, lowest */}
-            <path fill="#f7941d"
-              d="M0,220 C130,195 300,255 480,215 C660,175 740,245 800,220 L800,320 L0,320 Z" />
-            {/* Layer 2 — green */}
-            <path fill="#3aaa35"
-              d="M0,180 C110,155 280,215 460,175 C640,135 730,200 800,178 L800,320 L0,320 Z" />
-            {/* Layer 3 — dark purple */}
-            <path fill="#5c35d4"
-              d="M0,142 C150,118 330,172 520,138 C690,108 760,162 800,140 L800,320 L0,320 Z" />
-            {/* Layer 4 — blue, highest */}
-            <path fill="#3b4bc8"
-              d="M0,102 C140,78 320,132 510,98 C700,65 768,120 800,100 L800,320 L0,320 Z" />
-          </svg>
-        </div>
+        {/* Wave image at bottom */}
+        <img
+          src="https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/assets/login/wave-left-panel.svg"
+          alt=""
+          className="pointer-events-none select-none"
+          style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 'auto' }}
+        />
       </div>
 
       {/* ── RIGHT PANEL — gradient purple ── */}

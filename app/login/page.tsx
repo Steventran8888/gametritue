@@ -19,28 +19,6 @@ const APPLE_SVG = (
   </svg>
 )
 
-function LogoMark({ size, dark = false }: { size: number; dark?: boolean }) {
-  return (
-    <div
-      className="relative rounded-full flex items-center justify-center overflow-hidden flex-shrink-0"
-      style={{ width: size, height: size, background: dark ? 'rgba(59,75,200,0.1)' : 'rgba(255,255,255,0.2)' }}
-    >
-      <span
-        className="absolute font-bold select-none"
-        style={{ fontSize: size * 0.4, color: dark ? '#3b4bc8' : '#ffffff' }}
-      >
-        G
-      </span>
-      <img
-        src={LOGO_URL}
-        alt=""
-        className="absolute inset-0 w-full h-full object-contain"
-        onError={e => { e.currentTarget.style.display = 'none' }}
-      />
-    </div>
-  )
-}
-
 export default function LoginPage() {
   async function signInWithGoogle() {
     const supabase = createClient()
@@ -62,22 +40,26 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen min-h-dvh">
+    <div className="flex min-h-screen">
 
-      {/* ── LEFT PANEL (desktop only) ── */}
-      <div
-        className="hidden md:flex md:w-1/2 flex-col items-center justify-between py-16 px-14 relative overflow-hidden"
-        style={{ background: 'linear-gradient(155deg, #3b4bc8 0%, #5c35d4 100%)' }}
-      >
-        {/* Decorative circles */}
-        <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-white/5 pointer-events-none" />
-        <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-white/5 pointer-events-none" />
+      {/* ── LEFT PANEL — white, desktop only ── */}
+      <div className="hidden md:flex md:w-1/2 flex-col items-center justify-between py-16 px-14 relative overflow-hidden bg-white">
 
-        {/* Center branding */}
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center z-10">
-          <LogoMark size={120} />
-          <h1 className="font-bold text-white mt-1" style={{ fontSize: 32 }}>Gametritue</h1>
-          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+        {/* Center: logo + tagline */}
+        <div className="flex-1 flex flex-col items-center justify-center gap-5 text-center z-10">
+          <div className="relative" style={{ width: 220, height: 220 }}>
+            <span
+              className="absolute inset-0 flex items-center justify-center font-bold select-none"
+              style={{ fontSize: 88, color: '#3b4bc8' }}
+            >G</span>
+            <img
+              src={LOGO_URL}
+              alt="Gametritue"
+              className="absolute inset-0 w-full h-full object-contain"
+              onError={e => { e.currentTarget.style.display = 'none' }}
+            />
+          </div>
+          <p className="text-sm" style={{ color: '#94a3b8' }}>
             Rèn trí tuệ · Leo bảng xếp hạng
           </p>
         </div>
@@ -90,39 +72,76 @@ export default function LoginPage() {
             'Coin & phần thưởng hàng ngày',
           ].map(text => (
             <div key={text} className="flex items-center gap-3">
-              <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(255,255,255,0.2)' }}>
-                <span className="text-white text-xs">✓</span>
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: '#3b4bc8' }}
+              >
+                <span className="text-white text-xs leading-none">✓</span>
               </div>
-              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>{text}</span>
+              <span className="text-sm" style={{ color: '#475569' }}>{text}</span>
             </div>
           ))}
         </div>
+
+        {/* 4-layer wave at bottom — 35% height */}
+        <div
+          className="absolute bottom-0 left-0 right-0 pointer-events-none select-none"
+          style={{ height: '35%' }}
+        >
+          <svg
+            viewBox="0 0 800 320"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="none"
+            className="w-full h-full"
+            style={{ display: 'block' }}
+          >
+            {/* Layer 1 — orange, lowest */}
+            <path fill="#f7941d"
+              d="M0,220 C130,195 300,255 480,215 C660,175 740,245 800,220 L800,320 L0,320 Z" />
+            {/* Layer 2 — green */}
+            <path fill="#3aaa35"
+              d="M0,180 C110,155 280,215 460,175 C640,135 730,200 800,178 L800,320 L0,320 Z" />
+            {/* Layer 3 — dark purple */}
+            <path fill="#5c35d4"
+              d="M0,142 C150,118 330,172 520,138 C690,108 760,162 800,140 L800,320 L0,320 Z" />
+            {/* Layer 4 — blue, highest */}
+            <path fill="#3b4bc8"
+              d="M0,102 C140,78 320,132 510,98 C700,65 768,120 800,100 L800,320 L0,320 Z" />
+          </svg>
+        </div>
       </div>
 
-      {/* ── RIGHT PANEL ── */}
-      <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden bg-white"
-        style={{ padding: '48px 24px' }}>
-
-        {/* Mobile: override padding to 24px */}
-        <style>{`@media(min-width:768px){.right-inner{padding:48px}}`}</style>
-
-        {/* Mobile logo */}
+      {/* ── RIGHT PANEL — gradient purple ── */}
+      <div
+        className="flex-1 flex flex-col items-center justify-center relative overflow-hidden px-6 py-12 md:px-12"
+        style={{ background: 'linear-gradient(155deg, #3b4bc8 0%, #5c35d4 100%)' }}
+      >
+        {/* Mobile logo (hidden on desktop) */}
         <div className="flex md:hidden flex-col items-center gap-3 mb-8">
-          <LogoMark size={56} dark />
-          <span className="font-bold text-2xl" style={{ color: '#131a52' }}>Gametritue</span>
+          <div className="relative" style={{ width: 56, height: 56 }}>
+            <span
+              className="absolute inset-0 flex items-center justify-center font-bold text-2xl select-none text-white"
+            >G</span>
+            <img
+              src={LOGO_URL}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain"
+              onError={e => { e.currentTarget.style.display = 'none' }}
+            />
+          </div>
+          <span className="font-bold text-2xl text-white">Gametritue</span>
         </div>
 
         {/* Card */}
         <div className="w-full max-w-sm z-10">
-          <h2 className="font-bold mb-1" style={{ fontSize: 28, color: '#131a52' }}>
+          <h2 className="font-bold mb-1" style={{ fontSize: 28, color: '#ffffff' }}>
             Chào mừng trở lại
           </h2>
-          <p className="text-sm mb-8" style={{ color: '#94a3b8' }}>
+          <p className="text-sm mb-8" style={{ color: 'rgba(255,255,255,0.7)' }}>
             Đăng nhập để tiếp tục hành trình
           </p>
 
-          {/* Google button */}
+          {/* Google */}
           <button
             onClick={signInWithGoogle}
             className="w-full flex items-center justify-center gap-3 rounded-full transition-all hover:bg-slate-50 active:scale-95"
@@ -134,7 +153,7 @@ export default function LoginPage() {
 
           <div style={{ height: 12 }} />
 
-          {/* Apple button */}
+          {/* Apple */}
           <button
             onClick={signInWithApple}
             className="w-full flex items-center justify-center gap-3 rounded-full transition-all hover:opacity-90 active:scale-95"
@@ -148,33 +167,20 @@ export default function LoginPage() {
 
           {/* Divider */}
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-px" style={{ background: '#e2e8f0' }} />
-            <span className="text-sm" style={{ color: '#94a3b8' }}>hoặc</span>
-            <div className="flex-1 h-px" style={{ background: '#e2e8f0' }} />
+            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.3)' }} />
+            <span className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>hoặc</span>
+            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.3)' }} />
           </div>
 
           <div style={{ height: 32 }} />
 
           {/* Terms */}
-          <p className="text-center" style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.7 }}>
+          <p className="text-center" style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.7 }}>
             Bằng cách đăng nhập, bạn đồng ý với{' '}
-            <span className="underline cursor-pointer hover:text-slate-600 transition-colors">Điều khoản sử dụng</span>
+            <span className="underline cursor-pointer hover:opacity-80 transition-opacity">Điều khoản sử dụng</span>
             {' '}và{' '}
-            <span className="underline cursor-pointer hover:text-slate-600 transition-colors">Chính sách bảo mật</span>
+            <span className="underline cursor-pointer hover:opacity-80 transition-opacity">Chính sách bảo mật</span>
           </p>
-        </div>
-
-        {/* Wave decoration — mobile only */}
-        <div className="md:hidden absolute bottom-0 left-0 right-0 pointer-events-none select-none">
-          <svg viewBox="0 0 390 150" xmlns="http://www.w3.org/2000/svg"
-            preserveAspectRatio="none" className="w-full" style={{ display: 'block' }}>
-            <path fill="#f7941d" fillOpacity="0.15"
-              d="M0,90 C70,140 180,30 390,100 L390,150 L0,150 Z" />
-            <path fill="#3aaa35" fillOpacity="0.18"
-              d="M0,110 C110,55 260,145 390,75 L390,150 L0,150 Z" />
-            <path fill="#3b4bc8" fillOpacity="0.25"
-              d="M0,125 C130,90 280,150 390,108 L390,150 L0,150 Z" />
-          </svg>
         </div>
       </div>
 

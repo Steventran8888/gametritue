@@ -10,6 +10,14 @@ import { isFixed, isSolved, calcScore, fmtTime } from '../lib/gameLogic'
 const MAX_MISTAKES = 10
 const TIME_LIMIT = 180 * 60
 const AVATAR_BG_COLORS = ['#3b4bc8','#3aaa35','#1e9e7e','#1788c2','#5c35d4','#7c28cc','#f7941d','#cc1a6e','#d42020','#ffc107']
+const AVATAR_BASE = 'https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/Avatar'
+
+// Resolve avatar_url (filename hoặc full URL) thành src có thể dùng trong <img>
+function resolveAvatarUrl(avatarUrl: string | null | undefined): string {
+  if (!avatarUrl) return ''
+  if (avatarUrl.startsWith('http')) return avatarUrl
+  return `${AVATAR_BASE}/${avatarUrl}`
+}
 
 export default function GamePage() {
   const router = useRouter()
@@ -196,11 +204,13 @@ export default function GamePage() {
     if (defaultAvatars.length > 0) return
     setAvatarLoading(true)
     const supabase = createClient()
-    const { data } = await supabase.storage.from('avatars').list('defaults', { limit: 49 })
+    const { data } = await supabase.storage.from('Avatar').list('', { limit: 200 })
     if (data) {
       setDefaultAvatars(
-        data.filter(f => f.name !== '.emptyFolderPlaceholder')
-            .map(f => supabase.storage.from('avatars').getPublicUrl(`defaults/${f.name}`).data.publicUrl)
+        data
+          .map(f => f.name)
+          .filter(name => name.startsWith('avatar') && name.endsWith('.png'))
+          .sort()
       )
     }
     setAvatarLoading(false)
@@ -214,9 +224,9 @@ export default function GamePage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setAvatarLoading(false); return }
     const path = `${user.id}/custom.webp`
-    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
+    const { error } = await supabase.storage.from('Avatar').upload(path, file, { upsert: true, contentType: file.type })
     if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+      const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path)
       setDraftAvatarUrl(`${publicUrl}?t=${Date.now()}`)
     }
     setAvatarLoading(false)
@@ -329,12 +339,17 @@ export default function GamePage() {
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
               {/* Preview */}
               <div className="flex justify-center">
-                <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold shadow-md"
-                  style={{ background: draftAvatarBg || AVATAR_BG_COLORS[0] }}>
-                  {draftAvatarUrl
-                    ? <img src={draftAvatarUrl} alt="" className="w-full h-full object-cover" />
-                    : <span>{player.username?.[0]?.toUpperCase()}</span>}
-                </div>
+                {(() => {
+                  const src = resolveAvatarUrl(draftAvatarUrl)
+                  return (
+                    <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold shadow-md"
+                      style={{ background: draftAvatarBg || AVATAR_BG_COLORS[0] }}>
+                      {src
+                        ? <img src={src} alt="" className="w-full h-full object-cover" />
+                        : <span>{player.username?.[0]?.toUpperCase()}</span>}
+                    </div>
+                  )
+                })()}
               </div>
               {/* Màu nền */}
               <div>
@@ -356,11 +371,11 @@ export default function GamePage() {
                   <p className="text-center text-gray-300 text-sm py-4">Không có avatar</p>
                 ) : (
                   <div className="grid grid-cols-7 gap-1.5">
-                    {defaultAvatars.map(url => (
-                      <button key={url} onClick={() => setDraftAvatarUrl(url)}
-                        className="rounded-full overflow-hidden aspect-square transition-transform hover:scale-110"
-                        style={{ outline: draftAvatarUrl === url ? `3px solid #3b4bc8` : 'none', outlineOffset: '2px' }}>
-                        <img src={url} alt="" className="w-full h-full object-cover" />
+                    {defaultAvatars.map(filename => (
+                      <button key={filename} onClick={() => setDraftAvatarUrl(filename)}
+                        className="rounded-full overflow-hidden aspect-square transition-transform hover:scale-110 flex-shrink-0"
+                        style={{ width: 56, height: 56, outline: draftAvatarUrl === filename ? `3px solid #3b4bc8` : 'none', outlineOffset: '2px' }}>
+                        <img src={`${AVATAR_BASE}/${filename}`} alt="" className="w-full h-full object-cover" />
                       </button>
                     ))}
                   </div>
@@ -399,12 +414,17 @@ export default function GamePage() {
             <span>{Object.values(scores).reduce((sum, s) => sum + s, 0)} pt</span>
           </button>
           <button onClick={openAvatarModal} className="flex items-center gap-1.5 group">
-            <div className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2 ring-white group-hover:ring-blue-200 transition"
-              style={{ background: player.avatar_bg || AVATAR_BG_COLORS[0] }}>
-              {player.avatar_url
-                ? <img src={player.avatar_url} alt="" className="w-full h-full object-cover" />
-                : <span>{player.username?.[0]?.toUpperCase()}</span>}
-            </div>
+            {(() => {
+              const src = resolveAvatarUrl(player.avatar_url)
+              return (
+                <div className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold flex-shrink-0 ring-2 ring-white group-hover:ring-blue-200 transition"
+                  style={{ background: player.avatar_bg || AVATAR_BG_COLORS[0] }}>
+                  {src
+                    ? <img src={src} alt="" className="w-full h-full object-cover" />
+                    : <span>{player.username?.[0]?.toUpperCase()}</span>}
+                </div>
+              )
+            })()}
             <span className="text-gray-500">{player.username}</span>
             <span className="text-gray-300 text-xs group-hover:text-gray-500 transition">✎</span>
           </button>

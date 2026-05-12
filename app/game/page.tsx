@@ -164,7 +164,7 @@ export default function GamePage() {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
-        {Array.from({length:3},(_,i)=>i+1).map(lv => {
+        {Array.from({length:10},(_,i)=>i+1).map(lv => {
           const col = LEVEL_COLORS[lv]
           const done = Object.keys(scores).filter(k => k.startsWith(`${lv}-`)).length
           return (

@@ -27,8 +27,9 @@ export default function GamePage() {
   const [scores, setScores] = useState<Record<string, number>>({})
   const [lastScore, setLastScore] = useState(0)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
-  const [leaderboard, setLeaderboard] = useState<{id:string,username:string,total_score:number}[]>([])
   const [lbLoading, setLbLoading] = useState(false)
+  type LbEntry = {id:string,username:string,total_score:number}
+  const [lbData, setLbData] = useState<{top10:LbEntry[],myRank:number,above:LbEntry[],below:LbEntry[]} | null>(null)
 
   const puzzle = PUZZLES[level]?.[puzzleNum-1]?.puzzle || []
   const solution = PUZZLES[level]?.[puzzleNum-1]?.solution || []
@@ -138,15 +139,35 @@ export default function GamePage() {
 
   async function openLeaderboard() {
     setShowLeaderboard(true)
-    if (leaderboard.length > 0) return
+    if (lbData) return
     setLbLoading(true)
     const supabase = createClient()
-    const { data } = await supabase
-      .from('players')
-      .select('id, username, total_score')
-      .order('total_score', { ascending: false })
-      .limit(100)
-    setLeaderboard(data || [])
+
+    const [{ data: top10 }, { count }] = await Promise.all([
+      supabase.from('players').select('id, username, total_score')
+        .order('total_score', { ascending: false }).limit(10),
+      supabase.from('players').select('id', { count: 'exact', head: true })
+        .gt('total_score', player.total_score ?? 0),
+    ])
+
+    const myRank = (count ?? 0) + 1
+    let above: LbEntry[] = []
+    let below: LbEntry[] = []
+
+    if (myRank > 10) {
+      const [{ data: aboveData }, { data: belowData }] = await Promise.all([
+        supabase.from('players').select('id, username, total_score')
+          .gt('total_score', player.total_score ?? 0)
+          .order('total_score', { ascending: true }).limit(3),
+        supabase.from('players').select('id, username, total_score')
+          .lt('total_score', player.total_score ?? 0)
+          .order('total_score', { ascending: false }).limit(3),
+      ])
+      above = (aboveData || []).reverse()
+      below = belowData || []
+    }
+
+    setLbData({ top10: top10 || [], myRank, above, below })
     setLbLoading(false)
   }
 
@@ -182,38 +203,52 @@ export default function GamePage() {
               <button onClick={() => setShowLeaderboard(false)} className="text-gray-400 text-lg leading-none">✕</button>
             </div>
             <div className="overflow-y-auto flex-1">
-              {lbLoading ? (
+              {lbLoading || !lbData ? (
                 <p className="text-center text-gray-400 py-10 text-sm">Đang tải...</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-gray-400 uppercase border-b border-gray-100">
-                      <th className="py-2 pl-5 text-left w-8">#</th>
-                      <th className="py-2 text-left">Tên</th>
-                      <th className="py-2 pr-5 text-right">Điểm</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leaderboard.map((p, i) => {
-                      const isMe = p.id === player.id
-                      return (
-                        <tr key={p.id}
-                          className={`border-b border-gray-50 ${isMe ? 'bg-blue-50' : ''}`}>
-                          <td className={`py-2.5 pl-5 font-bold ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-600' : 'text-gray-400'}`}>
-                            {i + 1}
-                          </td>
-                          <td className={`py-2.5 ${isMe ? 'font-semibold text-blue-700' : 'text-gray-700'}`}>
-                            {p.username}{isMe ? ' (bạn)' : ''}
-                          </td>
-                          <td className="py-2.5 pr-5 text-right font-semibold text-gray-800">
-                            {(p.total_score || 0).toLocaleString()}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
+              ) : (() => {
+                const inTop10 = lbData.myRank <= 10
+                const rankColor = (r: number) => r === 1 ? 'text-yellow-500' : r === 2 ? 'text-gray-400' : r === 3 ? 'text-amber-600' : 'text-gray-400'
+                const Row = ({ p, rank, isMe }: { p: LbEntry, rank: number, isMe: boolean }) => (
+                  <tr key={p.id} className={`border-b border-gray-50 ${isMe ? 'bg-blue-50' : ''}`}>
+                    <td className={`py-2.5 pl-5 font-bold ${rankColor(rank)}`}>{rank}</td>
+                    <td className={`py-2.5 ${isMe ? 'font-semibold text-blue-700' : 'text-gray-700'}`}>
+                      {p.username}{isMe ? ' (bạn)' : ''}
+                    </td>
+                    <td className="py-2.5 pr-5 text-right font-semibold text-gray-800">
+                      {(p.total_score || 0).toLocaleString()}
+                    </td>
+                  </tr>
+                )
+                return (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-xs text-gray-400 uppercase border-b border-gray-100">
+                        <th className="py-2 pl-5 text-left w-8">#</th>
+                        <th className="py-2 text-left">Tên</th>
+                        <th className="py-2 pr-5 text-right">Điểm</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lbData.top10.map((p, i) => (
+                        <Row key={p.id} p={p} rank={i + 1} isMe={p.id === player.id} />
+                      ))}
+                      {!inTop10 && (
+                        <>
+                          <tr><td colSpan={3} className="py-2 text-center text-xs text-gray-300 tracking-widest">· · ·</td></tr>
+                          {lbData.above.map((p, i) => (
+                            <Row key={p.id} p={p} rank={lbData.myRank - lbData.above.length + i} isMe={false} />
+                          ))}
+                          <Row p={{ id: player.id, username: player.username, total_score: player.total_score ?? 0 }}
+                            rank={lbData.myRank} isMe={true} />
+                          {lbData.below.map((p, i) => (
+                            <Row key={p.id} p={p} rank={lbData.myRank + 1 + i} isMe={false} />
+                          ))}
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                )
+              })()}
             </div>
           </div>
         </div>

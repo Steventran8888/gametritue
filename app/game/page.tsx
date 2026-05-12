@@ -9,6 +9,7 @@ import { isFixed, isSolved, calcScore, fmtTime } from '../lib/gameLogic'
 
 const MAX_MISTAKES = 10
 const TIME_LIMIT = 180 * 60
+const AVATAR_BG_COLORS = ['#3b4bc8','#3aaa35','#1e9e7e','#1788c2','#5c35d4','#7c28cc','#f7941d','#cc1a6e','#d42020','#ffc107']
 
 export default function GamePage() {
   const router = useRouter()
@@ -30,6 +31,12 @@ export default function GamePage() {
   const [lbLoading, setLbLoading] = useState(false)
   type LbEntry = {id:string,username:string,total_score:number}
   const [lbData, setLbData] = useState<{top10:LbEntry[],myRank:number,above:LbEntry[],below:LbEntry[]} | null>(null)
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
+  const [defaultAvatars, setDefaultAvatars] = useState<string[]>([])
+  const [avatarLoading, setAvatarLoading] = useState(false)
+  const [avatarSaving, setAvatarSaving] = useState(false)
+  const [draftAvatarUrl, setDraftAvatarUrl] = useState('')
+  const [draftAvatarBg, setDraftAvatarBg] = useState('')
 
   const puzzle = PUZZLES[level]?.[puzzleNum-1]?.puzzle || []
   const solution = PUZZLES[level]?.[puzzleNum-1]?.solution || []
@@ -182,6 +189,52 @@ export default function GamePage() {
     setLbLoading(false)
   }
 
+  async function openAvatarModal() {
+    setDraftAvatarUrl(player.avatar_url || '')
+    setDraftAvatarBg(player.avatar_bg || AVATAR_BG_COLORS[0])
+    setShowAvatarModal(true)
+    if (defaultAvatars.length > 0) return
+    setAvatarLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase.storage.from('avatars').list('defaults', { limit: 49 })
+    if (data) {
+      setDefaultAvatars(
+        data.filter(f => f.name !== '.emptyFolderPlaceholder')
+            .map(f => supabase.storage.from('avatars').getPublicUrl(`defaults/${f.name}`).data.publicUrl)
+      )
+    }
+    setAvatarLoading(false)
+  }
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarLoading(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setAvatarLoading(false); return }
+    const path = `${user.id}/custom.webp`
+    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+      setDraftAvatarUrl(`${publicUrl}?t=${Date.now()}`)
+    }
+    setAvatarLoading(false)
+  }
+
+  async function saveAvatar() {
+    setAvatarSaving(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setAvatarSaving(false); return }
+    await supabase.from('players')
+      .update({ avatar_url: draftAvatarUrl, avatar_bg: draftAvatarBg })
+      .eq('id', user.id)
+    setPlayer((p: any) => ({ ...p, avatar_url: draftAvatarUrl, avatar_bg: draftAvatarBg }))
+    setAvatarSaving(false)
+    setShowAvatarModal(false)
+  }
+
   function handleKey(e: React.KeyboardEvent) {
     if (screen !== 'game' || !selected || !running) return
     const [r, c] = selected
@@ -264,6 +317,79 @@ export default function GamePage() {
           </div>
         </div>
       )}
+      {showAvatarModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4 pb-0 sm:pb-4"
+          onClick={() => setShowAvatarModal(false)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-sm max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-base font-bold text-gray-800">Tùy chỉnh hồ sơ</h2>
+              <button onClick={() => setShowAvatarModal(false)} className="text-gray-400 text-lg leading-none">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+              {/* Preview */}
+              <div className="flex justify-center">
+                <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold shadow-md"
+                  style={{ background: draftAvatarBg || AVATAR_BG_COLORS[0] }}>
+                  {draftAvatarUrl
+                    ? <img src={draftAvatarUrl} alt="" className="w-full h-full object-cover" />
+                    : <span>{player.username?.[0]?.toUpperCase()}</span>}
+                </div>
+              </div>
+              {/* Màu nền */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Màu nền</p>
+                <div className="flex gap-2 flex-wrap">
+                  {AVATAR_BG_COLORS.map(c => (
+                    <button key={c} onClick={() => setDraftAvatarBg(c)}
+                      className="w-8 h-8 rounded-full transition-transform hover:scale-110"
+                      style={{ background: c, outline: draftAvatarBg === c ? `3px solid ${c}` : 'none', outlineOffset: '2px' }} />
+                  ))}
+                </div>
+              </div>
+              {/* Avatar mặc định */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Avatar mặc định</p>
+                {avatarLoading ? (
+                  <p className="text-center text-gray-400 text-sm py-4">Đang tải...</p>
+                ) : defaultAvatars.length === 0 ? (
+                  <p className="text-center text-gray-300 text-sm py-4">Không có avatar</p>
+                ) : (
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {defaultAvatars.map(url => (
+                      <button key={url} onClick={() => setDraftAvatarUrl(url)}
+                        className="rounded-full overflow-hidden aspect-square transition-transform hover:scale-110"
+                        style={{ outline: draftAvatarUrl === url ? `3px solid #3b4bc8` : 'none', outlineOffset: '2px' }}>
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Upload */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ảnh tùy chỉnh</p>
+                <label className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border border-dashed border-gray-300 hover:border-blue-400 transition w-fit text-sm text-gray-500 hover:text-blue-500">
+                  <span>📷</span>
+                  <span>Upload ảnh</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <button onClick={() => setShowAvatarModal(false)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 font-semibold">
+                Hủy
+              </button>
+              <button onClick={saveAvatar} disabled={avatarSaving}
+                className="flex-1 py-2 rounded-xl text-white text-sm font-bold transition"
+                style={{ background: '#3b4bc8', opacity: avatarSaving ? 0.6 : 1 }}>
+                {avatarSaving ? 'Đang lưu...' : 'Lưu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between w-full max-w-lg mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Sudoku</h1>
         <div className="text-sm text-gray-500 flex items-center gap-3">
@@ -272,7 +398,16 @@ export default function GamePage() {
             <span>🏆</span>
             <span>{Object.values(scores).reduce((sum, s) => sum + s, 0)} pt</span>
           </button>
-          <span className="text-gray-400">{player.username}</span>
+          <button onClick={openAvatarModal} className="flex items-center gap-1.5 group">
+            <div className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2 ring-white group-hover:ring-blue-200 transition"
+              style={{ background: player.avatar_bg || AVATAR_BG_COLORS[0] }}>
+              {player.avatar_url
+                ? <img src={player.avatar_url} alt="" className="w-full h-full object-cover" />
+                : <span>{player.username?.[0]?.toUpperCase()}</span>}
+            </div>
+            <span className="text-gray-500">{player.username}</span>
+            <span className="text-gray-300 text-xs group-hover:text-gray-500 transition">✎</span>
+          </button>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 w-full max-w-lg">

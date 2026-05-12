@@ -60,24 +60,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Bullet points */}
-        <div className="flex flex-col gap-3 z-10 w-full">
-          {[
-            '100 puzzle · 10 level độ khó',
-            'Bảng xếp hạng toàn cầu',
-            'Coin & phần thưởng hàng ngày',
-          ].map(text => (
-            <div key={text} className="flex items-center gap-3">
-              <div
-                className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(255,255,255,0.3)' }}
-              >
-                <span className="text-white text-xs leading-none">✓</span>
-              </div>
-              <span className="text-sm text-white">{text}</span>
-            </div>
-          ))}
-        </div>
 
         {/* Wave image at bottom */}
         <img

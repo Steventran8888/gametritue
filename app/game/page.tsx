@@ -101,40 +101,51 @@ export default function GamePage() {
   }
 
   async function saveScore(sc: number) {
-     const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-  const key = `${level}-${puzzleNum}`
-  const isNewBest = !scores[key] || sc > scores[key]
-  
-  await supabase.from('scores').upsert({
-    player_id: user.id,
-    level, puzzle_num: puzzleNum,
-    score: sc, time_seconds: elapsed, mistakes
-  }, { onConflict: 'player_id,level,puzzle_num' })
-  
-  // Cộng coins khi hoàn thành bài lần đầu
-  if (!scores[key]) {
-    const coinReward = level * 10
-    await supabase.from('players')
-      .update({ 
-        total_coins: player.total_coins + coinReward,
-        total_score: (player.total_score || 0) + sc
-      })
-      .eq('id', user.id)
-    setPlayer((p: any) => ({ 
-      ...p, 
-      total_coins: p.total_coins + coinReward,
-      total_score: (p.total_score || 0) + sc
-    }))
-    await supabase.from('coin_transactions').insert({
-      player_id: user.id,
-      amount: coinReward,
-      reason: `Hoàn thành Level ${level} Bài ${puzzleNum}`
-    })
-  }
-  
-  setScores(prev => ({ ...prev, [key]: sc }))
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const key = `${level}-${puzzleNum}`
+    const isFirstTime = !scores[key]
+    const isNewBest = isFirstTime || sc > scores[key]
+
+    // Chỉ upsert khi là điểm cao nhất mới cho puzzle này
+    if (isNewBest) {
+      await supabase.from('scores').upsert({
+        player_id: user.id,
+        level, puzzle_num: puzzleNum,
+        score: sc, time_seconds: elapsed, mistakes
+      }, { onConflict: 'player_id,level,puzzle_num' })
+    }
+
+    // Tính lại total_score = SUM tất cả score cao nhất mỗi puzzle từ DB
+    const { data: allScores } = await supabase
+      .from('scores')
+      .select('score')
+      .eq('player_id', user.id)
+    const newTotalScore = (allScores || []).reduce((sum: number, s: any) => sum + (s.score || 0), 0)
+
+    if (isFirstTime) {
+      const coinReward = level * 10
+      await Promise.all([
+        supabase.from('players')
+          .update({ total_coins: player.total_coins + coinReward, total_score: newTotalScore })
+          .eq('id', user.id),
+        supabase.from('coin_transactions').insert({
+          player_id: user.id,
+          amount: coinReward,
+          reason: `Hoàn thành Level ${level} Bài ${puzzleNum}`
+        })
+      ])
+      setPlayer((p: any) => ({ ...p, total_coins: p.total_coins + coinReward, total_score: newTotalScore }))
+    } else if (isNewBest) {
+      await supabase.from('players').update({ total_score: newTotalScore }).eq('id', user.id)
+      setPlayer((p: any) => ({ ...p, total_score: newTotalScore }))
+    }
+
+    if (isNewBest) {
+      setScores(prev => ({ ...prev, [key]: sc }))
+      setLbData(null) // reset để leaderboard fetch lại với điểm mới
+    }
   }
 
   async function openLeaderboard() {

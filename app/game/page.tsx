@@ -42,7 +42,9 @@ export default function GamePage() {
   const [showAvatarModal, setShowAvatarModal] = useState(false)
   const [defaultAvatars, setDefaultAvatars] = useState<string[]>([])
   const [avatarLoading, setAvatarLoading] = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarSaving, setAvatarSaving] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
   const [draftAvatarUrl, setDraftAvatarUrl] = useState('')
   const [draftAvatarBg, setDraftAvatarBg] = useState('')
 
@@ -200,18 +202,22 @@ export default function GamePage() {
   async function openAvatarModal() {
     setDraftAvatarUrl(player.avatar_url || '')
     setDraftAvatarBg(player.avatar_bg || AVATAR_BG_COLORS[0])
+    setAvatarError('')
     setShowAvatarModal(true)
     if (defaultAvatars.length > 0) return
     setAvatarLoading(true)
     const supabase = createClient()
-    const { data } = await supabase.storage.from('Avatar').list('', { limit: 200 })
-    if (data) {
-      setDefaultAvatars(
-        data
-          .map(f => f.name)
-          .filter(name => name.startsWith('avatar') && name.endsWith('.png'))
-          .sort()
-      )
+    const { data, error } = await supabase.storage.from('Avatar').list('', { limit: 100, offset: 0 })
+    console.log('avatar list:', data, error)
+    if (error) {
+      setAvatarError(`Không tải được danh sách avatar: ${error.message}`)
+    } else if (data) {
+      const filtered = data
+        .map((f: any) => f.name)
+        .filter((name: string) => name.startsWith('avatar') && name.endsWith('.png'))
+        .sort()
+      console.log('filtered avatars:', filtered)
+      setDefaultAvatars(filtered)
     }
     setAvatarLoading(false)
   }
@@ -219,17 +225,26 @@ export default function GamePage() {
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setAvatarLoading(true)
+    setAvatarUploading(true)
+    setAvatarError('')
+    console.log('uploading:', file.name, file.type, file.size)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setAvatarLoading(false); return }
-    const path = `${user.id}/custom.webp`
-    const { error } = await supabase.storage.from('Avatar').upload(path, file, { upsert: true, contentType: file.type })
-    if (!error) {
+    if (!user) { setAvatarUploading(false); return }
+    const path = `users/${user.id}/${Date.now()}.png`
+    console.log('upload path:', path)
+    const { data: uploadData, error } = await supabase.storage
+      .from('Avatar')
+      .upload(path, file, { upsert: true, contentType: file.type })
+    console.log('upload result:', uploadData, error)
+    if (error) {
+      setAvatarError(`Upload thất bại: ${error.message}`)
+    } else {
       const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path)
-      setDraftAvatarUrl(`${publicUrl}?t=${Date.now()}`)
+      console.log('public URL:', publicUrl)
+      setDraftAvatarUrl(publicUrl)
     }
-    setAvatarLoading(false)
+    setAvatarUploading(false)
   }
 
   async function saveAvatar() {
@@ -362,13 +377,19 @@ export default function GamePage() {
                   ))}
                 </div>
               </div>
+              {/* Error banner */}
+              {avatarError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600">
+                  {avatarError}
+                </div>
+              )}
               {/* Avatar mặc định */}
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Avatar mặc định</p>
                 {avatarLoading ? (
                   <p className="text-center text-gray-400 text-sm py-4">Đang tải...</p>
                 ) : defaultAvatars.length === 0 ? (
-                  <p className="text-center text-gray-300 text-sm py-4">Không có avatar</p>
+                  <p className="text-center text-gray-300 text-sm py-4">Không có avatar (kiểm tra console)</p>
                 ) : (
                   <div className="grid grid-cols-7 gap-1.5">
                     {defaultAvatars.map(filename => (
@@ -384,10 +405,10 @@ export default function GamePage() {
               {/* Upload */}
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ảnh tùy chỉnh</p>
-                <label className="flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border border-dashed border-gray-300 hover:border-blue-400 transition w-fit text-sm text-gray-500 hover:text-blue-500">
-                  <span>📷</span>
-                  <span>Upload ảnh</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                <label className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border border-dashed transition w-fit text-sm ${avatarUploading ? 'border-blue-300 text-blue-400' : 'border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-500'}`}>
+                  <span>{avatarUploading ? '⏳' : '📷'}</span>
+                  <span>{avatarUploading ? 'Đang upload...' : 'Upload ảnh'}</span>
+                  <input type="file" accept="image/*" className="hidden" disabled={avatarUploading} onChange={handleAvatarUpload} />
                 </label>
               </div>
             </div>

@@ -26,5 +26,7 @@ export async function GET(request: Request) {
   }
 
   const next = searchParams.get('next') || '/game'
-  return NextResponse.redirect(`${origin}${next}`)
+  const safePaths = ['/game', '/trading-journal']
+  const redirectTo = safePaths.includes(next) ? next : '/game'
+  return NextResponse.redirect(`${origin}${redirectTo}`)
 }

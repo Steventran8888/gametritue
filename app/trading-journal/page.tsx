@@ -108,6 +108,23 @@ interface AccountStats {
   violations: number
 }
 
+interface JournalEntry {
+  id?: string
+  account_id: string
+  entry_date: string          // YYYY-MM-DD
+  has_trades: boolean
+  trade_count: number
+  daily_pnl: number
+  confidence_score: number | null
+  market_overview: string | null
+  strategy_decision: string | null
+  setup_reasoning: string | null
+  what_went_well: string | null
+  mistakes_made: string | null
+  lessons_learned: string | null
+  rule_adjustments: string | null
+}
+
 interface DayGroup {
   dateKey: string
   dateLabel: string
@@ -117,50 +134,90 @@ interface DayGroup {
   warningCount: number
   topCodes: { code: string; name: string; severity: string }[]
   dayViolations: ViolationWithRule[]
+  journal: JournalEntry | null
 }
 
-function groupByDay(trades: TradeHistoryRow[], violations: ViolationWithRule[]): DayGroup[] {
-  const dayMap = new Map<string, TradeHistoryRow[]>()
+function computeDayStats(
+  dateKey: string,
+  dayTrades: TradeHistoryRow[],
+  violations: ViolationWithRule[],
+  journal: JournalEntry | null,
+): DayGroup {
+  const totalPnl = dayTrades.reduce((s, t) => s + (t.profit ?? 0) + (t.commission ?? 0), 0)
+  const ticketSet = new Set(dayTrades.map(t => t.ticket))
+  const dayViolations = violations.filter(v => ticketSet.has(v.ticket))
+
+  const codeCounts: Record<string, { name: string; severity: string; count: number }> = {}
+  for (const v of dayViolations) {
+    const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
+    const code = rule?.code || v.rule_id
+    if (!codeCounts[code]) codeCounts[code] = { name: rule?.name || code, severity: rule?.severity || 'warning', count: 0 }
+    codeCounts[code].count++
+  }
+  const topCodes = Object.entries(codeCounts)
+    .map(([code, val]) => ({ code, ...val }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+
+  const criticalCount = dayViolations.filter(v => {
+    const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
+    return rule?.severity === 'critical'
+  }).length
+
+  return {
+    dateKey,
+    dateLabel: formatDayLabel(dateKey),
+    trades: dayTrades.sort((a, b) => a.close_time.localeCompare(b.close_time)),
+    totalPnl,
+    criticalCount,
+    warningCount: dayViolations.length - criticalCount,
+    topCodes,
+    dayViolations,
+    journal,
+  }
+}
+
+function buildDayGroups(
+  trades: TradeHistoryRow[],
+  violations: ViolationWithRule[],
+  journalEntries: JournalEntry[],
+): DayGroup[] {
+  if (trades.length === 0 && journalEntries.length === 0) return []
+
+  const todayKey = getDateKey(new Date().toISOString())
+
+  // Find earliest date across trades and journal entries
+  const allKeys = [
+    ...trades.map(t => getDateKey(t.close_time)),
+    ...journalEntries.map(j => j.entry_date),
+  ].filter(k => k <= todayKey)
+  if (allKeys.length === 0) return []
+
+  const earliestKey = allKeys.sort()[0]!
+
+  // Build lookup maps
+  const tradesByDay = new Map<string, TradeHistoryRow[]>()
   for (const t of trades) {
     const key = getDateKey(t.close_time)
-    if (!dayMap.has(key)) dayMap.set(key, [])
-    dayMap.get(key)!.push(t)
+    if (!tradesByDay.has(key)) tradesByDay.set(key, [])
+    tradesByDay.get(key)!.push(t)
   }
-  return Array.from(dayMap.entries())
-    .sort(([a], [b]) => b.localeCompare(a)) // newest first
-    .map(([dateKey, dayTrades]) => {
-      const totalPnl = dayTrades.reduce((s, t) => s + (t.profit ?? 0) + (t.commission ?? 0), 0)
-      const ticketSet = new Set(dayTrades.map(t => t.ticket))
-      const dayViolations = violations.filter(v => ticketSet.has(v.ticket))
+  const journalByDay = new Map(journalEntries.map(j => [j.entry_date, j]))
 
-      const codeCounts: Record<string, { name: string; severity: string; count: number }> = {}
-      for (const v of dayViolations) {
-        const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
-        const code = rule?.code || v.rule_id
-        if (!codeCounts[code]) codeCounts[code] = { name: rule?.name || code, severity: rule?.severity || 'warning', count: 0 }
-        codeCounts[code].count++
-      }
-      const topCodes = Object.entries(codeCounts)
-        .map(([code, val]) => ({ code, ...val }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 3)
+  // Walk from today → earliest, newest first
+  const result: DayGroup[] = []
+  const cursor = new Date(todayKey + 'T00:00:00Z')
+  const stop   = new Date(earliestKey + 'T00:00:00Z')
 
-      const criticalCount = dayViolations.filter(v => {
-        const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
-        return rule?.severity === 'critical'
-      }).length
+  while (cursor >= stop) {
+    const dateKey = cursor.toISOString().substring(0, 10)
+    const dayTrades = tradesByDay.get(dateKey) ?? []
+    const journal = journalByDay.get(dateKey) ?? null
+    result.push(computeDayStats(dateKey, dayTrades, violations, journal))
+    cursor.setUTCDate(cursor.getUTCDate() - 1)
+  }
 
-      return {
-        dateKey,
-        dateLabel: formatDayLabel(dateKey),
-        trades: dayTrades.sort((a, b) => a.close_time.localeCompare(b.close_time)),
-        totalPnl,
-        criticalCount,
-        warningCount: dayViolations.length - criticalCount,
-        topCodes,
-        dayViolations,
-      }
-    })
+  return result
 }
 
 async function fetchAccountStats(accountId: string): Promise<AccountStats> {
@@ -560,6 +617,136 @@ function ResultPanel({ result }: { result: UploadResult }) {
   )
 }
 
+// ── Journal helpers ───────────────────────────────────────────────
+
+const EMPTY_JOURNAL: Omit<JournalEntry, 'account_id' | 'entry_date'> = {
+  has_trades: false, trade_count: 0, daily_pnl: 0,
+  confidence_score: null, market_overview: null, strategy_decision: null,
+  setup_reasoning: null, what_went_well: null, mistakes_made: null,
+  lessons_learned: null, rule_adjustments: null,
+}
+
+function JournalField({ label, placeholder, value, onChange }: {
+  label: string; placeholder: string; value: string | null; onChange: (v: string) => void
+}) {
+  return (
+    <div>
+      <p className="text-xs text-gray-400 font-medium mb-1.5">{label}</p>
+      <textarea
+        value={value ?? ''}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        className="w-full bg-gray-800 border border-gray-700 text-gray-200 placeholder-gray-600 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-indigo-500 transition"
+      />
+    </div>
+  )
+}
+
+function JournalPanel({ dateKey, dateLabel, initialEntry, accountId, onClose, onSaved }: {
+  dateKey: string
+  dateLabel: string
+  initialEntry: JournalEntry | null
+  accountId: string
+  onClose: () => void
+  onSaved: (entry: JournalEntry) => void
+}) {
+  const [form, setForm] = useState<Omit<JournalEntry, 'account_id' | 'entry_date'>>({
+    ...EMPTY_JOURNAL, ...(initialEntry ?? {}),
+  })
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function update<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
+    const updated = { ...form, [field]: value }
+    setForm(updated)
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    setSaveStatus('saving')
+    saveTimer.current = setTimeout(async () => {
+      const res = await fetch('/api/trading-journal/journal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: accountId, entry_date: dateKey, ...updated }),
+      })
+      if (res.ok) {
+        const saved = await res.json() as JournalEntry
+        onSaved(saved)
+        setSaveStatus('saved')
+        setTimeout(() => setSaveStatus('idle'), 2000)
+      } else {
+        setSaveStatus('idle')
+      }
+    }, 2000)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1 bg-black/40" />
+      <div
+        className="w-full max-w-lg bg-gray-900 border-l border-gray-800 flex flex-col shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-800 sticky top-0 bg-gray-900 z-10 flex-shrink-0">
+          <div>
+            <h2 className="text-white font-bold text-base">{dateLabel}</h2>
+            <p className={`text-xs mt-0.5 transition ${
+              saveStatus === 'saving' ? 'text-yellow-500' :
+              saveStatus === 'saved'  ? 'text-green-500' : 'text-gray-600'
+            }`}>
+              {saveStatus === 'saving' ? 'Đang lưu…' : saveStatus === 'saved' ? '✓ Đã lưu' : 'Journal'}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-2xl leading-none transition mt-0.5">×</button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          {/* Toggle + Confidence */}
+          <div className="flex items-center justify-between gap-4">
+            <button
+              onClick={() => update('has_trades', !form.has_trades)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
+                form.has_trades ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {form.has_trades ? '✓ Có lệnh hôm nay' : 'Không vào lệnh'}
+            </button>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-600 mr-1">Confidence</span>
+              {[1, 2, 3, 4, 5].map(n => (
+                <button
+                  key={n}
+                  onClick={() => update('confidence_score', form.confidence_score === n ? null : n)}
+                  className={`text-base transition ${(form.confidence_score ?? 0) >= n ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'}`}
+                >●</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 1: Context */}
+          <div className="space-y-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bối cảnh</p>
+            <JournalField label="Market Overview" placeholder="Thị trường hôm nay như thế nào?" value={form.market_overview} onChange={v => update('market_overview', v || null)} />
+            <JournalField label="Strategy Decision" placeholder="Quyết định hôm nay làm gì?" value={form.strategy_decision} onChange={v => update('strategy_decision', v || null)} />
+          </div>
+
+          {/* Section 2: Review */}
+          <div className="space-y-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Review</p>
+            <JournalField label="🎯 Setup & Reasoning" placeholder="Setup và lý do vào lệnh..." value={form.setup_reasoning} onChange={v => update('setup_reasoning', v || null)} />
+            <JournalField label="📈 What Went Well" placeholder="Điều gì đã làm tốt..." value={form.what_went_well} onChange={v => update('what_went_well', v || null)} />
+            <JournalField label="❌ Mistakes Made" placeholder="Lỗi nào đã mắc phải..." value={form.mistakes_made} onChange={v => update('mistakes_made', v || null)} />
+            <JournalField label="📚 Lessons Learned" placeholder="Bài học rút ra..." value={form.lessons_learned} onChange={v => update('lessons_learned', v || null)} />
+            <JournalField label="🔄 Rule Adjustments" placeholder="Cần điều chỉnh rule gì không..." value={form.rule_adjustments} onChange={v => update('rule_adjustments', v || null)} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Dashboard ────────────────────────────────────────────────────
 
 function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => void }) {
@@ -603,6 +790,10 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
   // Timeline expand/collapse
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
+
+  // Journal entries + open panel
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
+  const [journalPanel, setJournalPanel] = useState<string | null>(null) // dateKey
 
   const fileRef = useRef<HTMLInputElement>(null)
   const selectedAccount = accounts.find(a => a.id === selectedId) ?? null
@@ -650,21 +841,33 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
   // ── Data loaders ─────────────────────────────────────────────────
 
-  async function loadTradeHistory(accountId: string) {
-    console.log('Fetching trades for account:', accountId)
-    setTradeHistoryLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('trading_history')
-        .select('ticket, type, symbol, open_time, close_time, pips, profit, commission')
-        .eq('account_id', accountId)
-        .order('open_time', { ascending: false })
-      if (error) console.error('fetchTrades error:', error)
-      console.log('Trades fetched:', data?.length, data?.[0])
-      setTradeHistory((data as TradeHistoryRow[]) ?? [])
-    } finally {
-      setTradeHistoryLoading(false)
+  async function loadJournalEntries(accountId: string) {
+    const res = await fetch(`/api/trading-journal/journal?account_id=${accountId}`)
+    if (res.ok) setJournalEntries((await res.json()) as JournalEntry[])
+  }
+
+  async function syncTradeStats(trades: TradeHistoryRow[], accountId: string) {
+    if (trades.length === 0) return
+    const byDay = new Map<string, { count: number; pnl: number }>()
+    for (const t of trades) {
+      const key = getDateKey(t.close_time)
+      const cur = byDay.get(key) ?? { count: 0, pnl: 0 }
+      cur.count++
+      cur.pnl += (t.profit ?? 0) + (t.commission ?? 0)
+      byDay.set(key, cur)
     }
+    const rows = Array.from(byDay.entries()).map(([date, s]) => ({
+      account_id: accountId,
+      entry_date: date,
+      has_trades: true,
+      trade_count: s.count,
+      daily_pnl: s.pnl,
+    }))
+    await supabase
+      .from('trading_journal_entries')
+      .upsert(rows, { onConflict: 'account_id,entry_date', ignoreDuplicates: false })
+    // Reload journal entries to reflect synced stats
+    await loadJournalEntries(accountId)
   }
 
   async function loadViolations(accountId: string) {
@@ -695,6 +898,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       setAccountStats(null)
       setTradeHistory([])
       setViolations([])
+      setJournalEntries([])
       return
     }
     const id = selectedAccount.id
@@ -703,8 +907,25 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       .then(setAccountStats)
       .catch(() => setAccountStats(null))
       .finally(() => setStatsLoading(false))
-    void loadTradeHistory(id)
     void loadViolations(id)
+    void loadJournalEntries(id)
+    // Load trades then sync daily stats into journal entries
+    ;(async () => {
+      setTradeHistoryLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('trading_history')
+          .select('ticket, type, symbol, open_time, close_time, pips, profit, commission')
+          .eq('account_id', id)
+          .order('open_time', { ascending: false })
+        if (error) console.error('fetchTrades error:', error)
+        const rows = (data as TradeHistoryRow[]) ?? []
+        setTradeHistory(rows)
+        void syncTradeStats(rows, id)
+      } finally {
+        setTradeHistoryLoading(false)
+      }
+    })()
   }, [selectedAccount?.id])
 
   function toggleDay(dateKey: string) {
@@ -796,7 +1017,15 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       } else {
         setResult(data as UploadResult)
         setUploadSuccess(true)
-        await loadTradeHistory(selectedId)
+        // Reload trades and sync journal stats
+        const { data: freshTrades } = await supabase
+          .from('trading_history')
+          .select('ticket, type, symbol, open_time, close_time, pips, profit, commission')
+          .eq('account_id', selectedId)
+          .order('open_time', { ascending: false })
+        const rows = (freshTrades as TradeHistoryRow[]) ?? []
+        setTradeHistory(rows)
+        void syncTradeStats(rows, selectedId)
         void doRescan(selectedId)
         // Close modal after 2s, then show toast
         setTimeout(() => {
@@ -972,7 +1201,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
         {/* Trade History — Timeline */}
         {selectedAccount && (() => {
-          const dayGroups = groupByDay(tradeHistory, violations)
+          const dayGroups = buildDayGroups(tradeHistory, violations, journalEntries)
           return (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
@@ -1003,62 +1232,89 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
                         {/* ── Day header row ── */}
                         <div className={`flex items-center px-4 py-3 gap-2 ${
+                          day.trades.length === 0 ? 'opacity-60' :
                           isNegative ? 'bg-red-900/10' : isPositive ? 'bg-green-900/10' : ''
                         }`}>
 
                           {/* Chevron + date label + trade count */}
                           <button
-                            onClick={() => toggleDay(day.dateKey)}
+                            onClick={() => day.trades.length > 0 && toggleDay(day.dateKey)}
                             className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
                           >
-                            <svg
-                              className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
-                              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
-                            <span className="text-gray-200 font-medium text-sm truncate">{day.dateLabel}</span>
-                            <span className="text-gray-600 text-xs flex-shrink-0">{day.trades.length} lệnh</span>
+                            {day.trades.length > 0 ? (
+                              <svg
+                                className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                            ) : (
+                              <span className="w-3.5 h-3.5 flex-shrink-0" />
+                            )}
+                            <span className={`font-medium text-sm truncate ${day.trades.length === 0 ? 'text-gray-500' : 'text-gray-200'}`}>
+                              {day.dateLabel}
+                            </span>
+                            {day.trades.length > 0 && (
+                              <span className="text-gray-600 text-xs flex-shrink-0">{day.trades.length} lệnh</span>
+                            )}
                           </button>
 
-                          {/* Right: top violation codes + severity counts + P&L + note */}
+                          {/* Right section */}
                           <div className="flex items-center gap-2 flex-shrink-0">
+
+                            {/* Journal indicator */}
+                            {day.journal?.lessons_learned ? (
+                              <span className="hidden sm:flex items-center gap-1 text-xs text-indigo-400 max-w-[160px]">
+                                <span>📝</span>
+                                <span className="truncate">{day.journal.lessons_learned.slice(0, 30)}</span>
+                              </span>
+                            ) : day.trades.length === 0 && !day.journal ? (
+                              <span className="hidden sm:inline text-xs text-gray-700 italic">Chưa có ghi chú</span>
+                            ) : null}
+
+                            {/* Confidence dots */}
+                            {day.journal?.confidence_score != null && (
+                              <span className="hidden md:flex gap-0.5">
+                                {[1,2,3,4,5].map(n => (
+                                  <span key={n} className={`text-xs ${n <= day.journal!.confidence_score! ? 'text-yellow-400' : 'text-gray-700'}`}>●</span>
+                                ))}
+                              </span>
+                            )}
 
                             {/* Top 3 violation codes */}
                             {day.topCodes.map(c => (
                               <span key={c.code} className={`hidden md:inline-block px-1.5 py-0.5 rounded font-mono text-xs ${
-                                c.severity === 'critical'
-                                  ? 'bg-red-900/50 text-red-300'
-                                  : 'bg-yellow-900/50 text-yellow-300'
+                                c.severity === 'critical' ? 'bg-red-900/50 text-red-300' : 'bg-yellow-900/50 text-yellow-300'
                               }`}>{c.code}</span>
                             ))}
 
                             {/* Severity counts */}
                             {(day.criticalCount > 0 || day.warningCount > 0) && (
                               <span className="text-xs hidden sm:flex items-center gap-1">
-                                {day.criticalCount > 0 && (
-                                  <span className="text-red-400">🔴 {day.criticalCount}</span>
-                                )}
-                                {day.warningCount > 0 && (
-                                  <span className="text-yellow-400">🟡 {day.warningCount}</span>
-                                )}
+                                {day.criticalCount > 0 && <span className="text-red-400">🔴 {day.criticalCount}</span>}
+                                {day.warningCount  > 0 && <span className="text-yellow-400">🟡 {day.warningCount}</span>}
                               </span>
                             )}
 
-                            {/* P&L */}
-                            <span className={`font-semibold text-sm tabular-nums w-24 text-right ${
-                              isPositive ? 'text-green-400' : isNegative ? 'text-red-400' : 'text-gray-500'
-                            }`}>
-                              {isPositive ? '+' : ''}{day.totalPnl.toFixed(2)}
-                            </span>
+                            {/* P&L (only for days with trades) */}
+                            {day.trades.length > 0 && (
+                              <span className={`font-semibold text-sm tabular-nums w-24 text-right ${
+                                isPositive ? 'text-green-400' : isNegative ? 'text-red-400' : 'text-gray-500'
+                              }`}>
+                                {isPositive ? '+' : ''}{day.totalPnl.toFixed(2)}
+                              </span>
+                            )}
 
-                            {/* Note placeholder */}
+                            {/* Ghi chú button */}
                             <button
-                              onClick={e => e.stopPropagation()}
-                              className="text-xs text-gray-700 hover:text-gray-500 transition whitespace-nowrap"
-                              title="Thêm ghi chú (coming soon)"
+                              onClick={e => { e.stopPropagation(); setJournalPanel(day.dateKey) }}
+                              className={`text-xs transition whitespace-nowrap px-2 py-0.5 rounded ${
+                                day.journal
+                                  ? 'text-indigo-400 hover:text-indigo-300'
+                                  : 'text-gray-600 hover:text-gray-400'
+                              }`}
                             >
-                              + Ghi chú
+                              {day.journal ? '✏ Sửa' : '+ Ghi chú'}
                             </button>
                           </div>
                         </div>
@@ -1226,6 +1482,31 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
           {uploadToast}
         </div>
       )}
+
+      {/* Journal panel */}
+      {journalPanel && selectedAccount && (() => {
+        const day = buildDayGroups(tradeHistory, violations, journalEntries)
+          .find(d => d.dateKey === journalPanel)
+        const dateLabel = day?.dateLabel ?? formatDayLabel(journalPanel)
+        const existing = journalEntries.find(j => j.entry_date === journalPanel) ?? null
+        return (
+          <JournalPanel
+            dateKey={journalPanel}
+            dateLabel={dateLabel}
+            initialEntry={existing}
+            accountId={selectedAccount.id}
+            onClose={() => setJournalPanel(null)}
+            onSaved={saved => {
+              setJournalEntries(prev => {
+                const idx = prev.findIndex(j => j.entry_date === saved.entry_date)
+                return idx >= 0
+                  ? prev.map((j, i) => i === idx ? saved : j)
+                  : [...prev, saved]
+              })
+            }}
+          />
+        )
+      })()}
 
       {showAddModal && (
         <AddAccountModal

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
 import {
   ACCOUNT_TYPE_PRESETS,
   type TradingAccount,
@@ -8,6 +9,24 @@ import {
   getAccounts,
   createAccount,
 } from '@/lib/tradingAccounts'
+
+function getSupa() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+}
+
+const SELECTED_ACCOUNT_COOKIE = 'selected_account_id'
+
+function readSelectedAccountCookie(): string | null {
+  const match = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith(`${SELECTED_ACCOUNT_COOKIE}=`))
+  return match ? (match.split('=')[1] ?? null) : null
+}
+
+function writeSelectedAccountCookie(id: string) {
+  document.cookie = `${SELECTED_ACCOUNT_COOKIE}=${id}; path=/trading-journal; max-age=86400; SameSite=Strict`
+}
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -38,6 +57,25 @@ interface UploadResult {
   violations_by_severity: { critical: number; warning: number }
   violations: ViolationRow[]
   trades: TradeRow[]
+}
+
+interface AccountStats {
+  total_trades: number
+  win_trades: number
+  total_pnl: number
+  violations: number
+}
+
+async function fetchAccountStats(accountId: string): Promise<AccountStats> {
+  const sb = getSupa()
+  const [{ data: trades }, { count: vCount }] = await Promise.all([
+    sb.from('trading_history').select('profit, commission').eq('account_id', accountId),
+    sb.from('rule_violations').select('id', { count: 'exact', head: true }).eq('account_id', accountId),
+  ])
+  const total = trades?.length ?? 0
+  const wins  = trades?.filter(t => (t.profit ?? 0) > 0).length ?? 0
+  const pnl   = trades?.reduce((s, t) => s + (t.profit ?? 0) + (t.commission ?? 0), 0) ?? 0
+  return { total_trades: total, win_trades: wins, total_pnl: pnl, violations: vCount ?? 0 }
 }
 
 // ── LoginGate ────────────────────────────────────────────────────
@@ -336,14 +374,25 @@ function AddAccountModal({
 // ── Result Panel ─────────────────────────────────────────────────
 
 function ResultPanel({ result }: { result: UploadResult }) {
-  const [expanded, setExpanded] = useState<'critical' | 'warning' | null>(null)
+  const [ruleNames, setRuleNames] = useState<Record<string, string>>({})
+  const [showViolations, setShowViolations] = useState(false)
 
-  const criticals = result.violations?.filter(v => v.severity === 'critical') ?? []
-  const warnings  = result.violations?.filter(v => v.severity === 'warning')  ?? []
+  const nCritical = result.violations_by_severity?.critical ?? 0
+  const nWarning  = result.violations_by_severity?.warning  ?? 0
 
-  function toggle(sev: 'critical' | 'warning') {
-    setExpanded(prev => prev === sev ? null : sev)
-  }
+  // Fetch human-readable rule names when violations exist
+  useEffect(() => {
+    if (!result.violations_found) return
+    getSupa()
+      .from('trading_rules')
+      .select('rule_code, name')
+      .then(({ data }) => {
+        if (!data) return
+        const map: Record<string, string> = {}
+        for (const r of data) map[r.rule_code] = r.name
+        setRuleNames(map)
+      })
+  }, [result])
 
   return (
     <div className="space-y-2">
@@ -356,49 +405,44 @@ function ResultPanel({ result }: { result: UploadResult }) {
         <span className="text-gray-500">{result.totalParsed - result.tradesAdded} duplicates skipped</span>
       </p>
 
-      {/* Violations summary */}
+      {/* Violations */}
       {(result.violations_found ?? 0) === 0 ? (
         <p className="text-xs text-green-600">✓ No rule violations detected</p>
       ) : (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            {criticals.length > 0 && (
-              <button
-                onClick={() => toggle('critical')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition ${
-                  expanded === 'critical' ? 'bg-red-900 text-red-300' : 'bg-red-950 text-red-400 hover:bg-red-900'
-                }`}
-              >
-                🔴 Critical: {criticals.length}
-              </button>
-            )}
-            {warnings.length > 0 && (
-              <button
-                onClick={() => toggle('warning')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition ${
-                  expanded === 'warning' ? 'bg-yellow-900 text-yellow-200' : 'bg-yellow-950 text-yellow-500 hover:bg-yellow-900'
-                }`}
-              >
-                🟡 Warning: {warnings.length}
-              </button>
-            )}
-          </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setShowViolations(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/50 transition"
+          >
+            <span className="text-sm font-semibold text-yellow-400">⚠ Rule Violations ({result.violations_found})</span>
+            <div className="flex items-center gap-2">
+              {nCritical > 0 && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-950 text-red-400">Critical: {nCritical}</span>}
+              {nWarning > 0  && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-950 text-yellow-400">Warning: {nWarning}</span>}
+              <span className="text-gray-600 text-xs">{showViolations ? '▲' : '▼'}</span>
+            </div>
+          </button>
 
-          {expanded && (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          {showViolations && (
+            <div className="border-t border-gray-800 overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-800">
                     <th className="px-4 py-2 text-left text-gray-500 font-medium">Ticket</th>
                     <th className="px-4 py-2 text-left text-gray-500 font-medium">Rule</th>
+                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Severity</th>
                     <th className="px-4 py-2 text-left text-gray-500 font-medium">Note</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(expanded === 'critical' ? criticals : warnings).map((v, i) => (
+                  {result.violations.map((v, i) => (
                     <tr key={i} className="border-b border-gray-800/50">
                       <td className="px-4 py-2 font-mono text-gray-300">{v.ticket}</td>
-                      <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{v.rule_code}</td>
+                      <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{ruleNames[v.rule_code] ?? v.rule_code}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {v.severity === 'critical'
+                          ? <span className="text-red-400">🔴 Critical</span>
+                          : <span className="text-yellow-400">🟡 Warning</span>}
+                      </td>
                       <td className="px-4 py-2 text-gray-500">{v.auto_note}</td>
                     </tr>
                   ))}
@@ -423,6 +467,8 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<UploadResult | null>(null)
   const [error, setError] = useState('')
+  const [accountStats, setAccountStats] = useState<AccountStats | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const selectedAccount = accounts.find(a => a.id === selectedId) ?? null
@@ -438,16 +484,29 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
     }
   }, [])
 
-  // Load accounts on mount
+  // Load accounts on mount, restore cookie-selected account
   useEffect(() => {
     getAccounts()
       .then(accs => {
         setAccounts(accs)
-        if (accs.length > 0) setSelectedId(accs[0].id)
+        if (accs.length === 0) return
+        const cookieId = readSelectedAccountCookie()
+        const match = cookieId ? accs.find(a => a.id === cookieId) : null
+        setSelectedId(match ? match.id : accs[0].id)
       })
       .catch(() => {/* non-fatal */})
       .finally(() => setLoadingAccounts(false))
   }, [])
+
+  // Fetch account stats whenever selected account changes
+  useEffect(() => {
+    if (!selectedId) { setAccountStats(null); return }
+    setStatsLoading(true)
+    fetchAccountStats(selectedId)
+      .then(setAccountStats)
+      .catch(() => setAccountStats(null))
+      .finally(() => setStatsLoading(false))
+  }, [selectedId])
 
   async function handleUpload(file: File) {
     if (!selectedId) return
@@ -466,8 +525,13 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
       })
       if (res.status === 401) { onLogout(); return }
       const data = await res.json()
-      if (!res.ok) setError(data.error ?? 'Upload failed')
-      else setResult(data as UploadResult)
+      if (!res.ok) {
+        setError(data.error ?? 'Upload failed')
+      } else {
+        setResult(data as UploadResult)
+        // Refetch stats to reflect new trades/violations
+        if (selectedId) fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})
+      }
     } catch {
       setError('Network error — please try again')
     } finally {
@@ -504,7 +568,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
               accounts.map(acc => (
                 <button
                   key={acc.id}
-                  onClick={() => { setSelectedId(acc.id); setResult(null) }}
+                  onClick={() => { setSelectedId(acc.id); setResult(null); writeSelectedAccountCookie(acc.id) }}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
                     selectedId === acc.id
                       ? 'bg-indigo-600 text-white'
@@ -541,6 +605,28 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
                   {selectedAccount.dd_type ? ` ${selectedAccount.dd_type}` : ''}
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Account stats strip */}
+          {selectedAccount && (
+            <div className="flex flex-wrap items-center gap-0 pt-3 border-t border-gray-800 text-xs divide-x divide-gray-800">
+              {statsLoading ? (
+                <span className="text-gray-600 px-3">Loading stats…</span>
+              ) : accountStats ? (
+                <>
+                  <span className="text-gray-400 px-3">Trades: <span className="text-gray-200 font-medium">{accountStats.total_trades}</span></span>
+                  <span className="text-gray-400 px-3">Win Rate: <span className="text-gray-200 font-medium">
+                    {accountStats.total_trades > 0 ? ((accountStats.win_trades / accountStats.total_trades) * 100).toFixed(1) : '0.0'}%
+                  </span></span>
+                  <span className="text-gray-400 px-3">P&amp;L: <span className={`font-semibold ${accountStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {accountStats.total_pnl >= 0 ? '+' : ''}${accountStats.total_pnl.toFixed(2)}
+                  </span></span>
+                  {accountStats.violations > 0 && (
+                    <span className="text-yellow-500 px-3">⚠ Violations: <span className="font-medium">{accountStats.violations}</span></span>
+                  )}
+                </>
+              ) : null}
             </div>
           )}
         </div>

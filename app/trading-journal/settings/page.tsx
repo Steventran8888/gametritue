@@ -190,6 +190,7 @@ export default function SettingsPage() {
   const [accounts, setAccounts] = useState<TradingAccount[]>([])
   const [loadingRules, setLoadingRules] = useState(true)
   const [loadingAccounts, setLoadingAccounts] = useState(true)
+  const [tradeCountMap, setTradeCountMap] = useState<Record<string, number>>({})
   const [editingAccount, setEditingAccount] = useState<TradingAccount | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
@@ -213,12 +214,28 @@ export default function SettingsPage() {
     })()
   }, [authed])
 
-  // Load accounts
+  // Load accounts + trade counts per account
   useEffect(() => {
     if (!authed) return
-    getAccounts()
-      .then(setAccounts)
-      .finally(() => setLoadingAccounts(false))
+    ;(async () => {
+      try {
+        const accs = await getAccounts()
+        setAccounts(accs)
+        // Fetch trade count per account in parallel
+        const counts = await Promise.all(
+          accs.map(async acc => {
+            const { count } = await getClient()
+              .from('trading_history')
+              .select('id', { count: 'exact', head: true })
+              .eq('account_id', acc.id)
+            return { id: acc.id, count: count ?? 0 }
+          }),
+        )
+        setTradeCountMap(Object.fromEntries(counts.map(c => [c.id, c.count])))
+      } finally {
+        setLoadingAccounts(false)
+      }
+    })()
   }, [authed])
 
   async function toggleRule(rule: Rule) {
@@ -352,7 +369,7 @@ export default function SettingsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    {['Display Name', 'Broker', 'Code', 'Type', 'Balance', 'Daily DD', 'Total DD', ''].map(h => (
+                    {['Display Name', 'Broker', 'Code', 'Type', 'Balance', 'Daily DD', 'Total DD', 'Trades', ''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -367,6 +384,7 @@ export default function SettingsPage() {
                       <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{acc.currency} {acc.initial_balance.toLocaleString()}</td>
                       <td className="px-4 py-3 text-yellow-500 text-xs">{acc.daily_dd_pct != null ? `${acc.daily_dd_pct}%` : '—'}</td>
                       <td className="px-4 py-3 text-orange-500 text-xs">{acc.total_dd_pct != null ? `${acc.total_dd_pct}%` : '—'}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs">{tradeCountMap[acc.id] ?? '—'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <button onClick={() => setEditingAccount(acc)} className="text-xs text-indigo-400 hover:text-indigo-300 transition">Edit</button>

@@ -53,9 +53,6 @@ export async function POST(req: NextRequest) {
 
   const balance = account?.current_balance ?? account?.initial_balance ?? 0
 
-  // Delete existing violations for this account before re-running
-  await supabase.from('rule_violations').delete().eq('account_id', accountId)
-
   const trades: ParsedTrade[] = rows.map(r => ({
     ticket:     r.ticket,
     open:       isoToFTMO(r.open_time),

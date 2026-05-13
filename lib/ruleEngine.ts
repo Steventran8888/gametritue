@@ -262,8 +262,9 @@ export async function saveViolations(
   const supabase = getSupabase()
   const rows = violations.map(v => ({
     account_id: accountId,
-    ticket: v.ticket,
-    rule_id: v.rule_id,
+    ticket:    v.ticket,
+    rule_id:   v.rule_id,
+    severity:  v.severity,
     auto_note: v.auto_note,
   }))
   const { data, error } = await supabase

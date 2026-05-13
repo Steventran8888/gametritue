@@ -60,7 +60,7 @@ interface ViolationWithRule {
   ticket: string
   rule_id: string
   auto_note: string
-  rule_code: string
+  code: string
   rule_name: string
   category: string
   severity: string
@@ -68,7 +68,7 @@ interface ViolationWithRule {
 
 interface RuleOption {
   id: string
-  rule_code: string
+  code: string
   name: string
   category: string
   severity: string
@@ -76,7 +76,7 @@ interface RuleOption {
 
 interface ViolationRow {
   ticket: string
-  rule_code: string
+  code: string
   severity: string
   auto_note: string
 }
@@ -414,11 +414,11 @@ function ResultPanel({ result }: { result: UploadResult }) {
     if (!result.violations_found) return
     supabase
       .from('trading_rules')
-      .select('rule_code, name')
+      .select('code, name')
       .then(({ data }) => {
         if (!data) return
         const map: Record<string, string> = {}
-        for (const r of data) map[r.rule_code] = r.name
+        for (const r of data) map[r.code] = r.name
         setRuleNames(map)
       })
   }, [result])
@@ -463,7 +463,7 @@ function ResultPanel({ result }: { result: UploadResult }) {
                   {result.violations.map((v, i) => (
                     <tr key={i} className="border-b border-gray-800/50">
                       <td className="px-4 py-2 font-mono text-gray-300">{v.ticket}</td>
-                      <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{ruleNames[v.rule_code] ?? v.rule_code}</td>
+                      <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{ruleNames[v.code] ?? v.code}</td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         {v.severity === 'critical'
                           ? <span className="text-red-400">🔴 Critical</span>
@@ -554,7 +554,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
     console.log('supabase KEY available:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
     supabase
       .from('trading_rules')
-      .select('id, rule_code, name, category, severity')
+      .select('id, code, name, category, severity')
       .eq('is_active', true)
       .order('category')
       .then(({ data, error }) => {

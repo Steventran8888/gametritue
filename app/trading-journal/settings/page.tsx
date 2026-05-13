@@ -20,7 +20,7 @@ const supabase = createClient(
 
 type Rule = {
   id: string
-  rule_code: string
+  code: string
   name: string
   category: string
   severity: string
@@ -332,7 +332,7 @@ export default function SettingsPage() {
                             </td>
                             <td className="px-4 py-3">
                               <p className="text-gray-200 font-medium">{rule.name}</p>
-                              <p className="text-gray-600 text-xs font-mono">{rule.rule_code}</p>
+                              <p className="text-gray-600 text-xs font-mono">{rule.code}</p>
                             </td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-0.5 rounded text-xs font-semibold ${SEV_COLORS[rule.severity] ?? 'text-gray-400 bg-gray-800'}`}>

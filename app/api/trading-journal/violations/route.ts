@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       .eq('account_id', accountId),
     supabase
       .from('trading_rules')
-      .select('id, rule_code, name, category, severity'),
+      .select('id, code, name, category, severity'),
   ])
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     ticket: v.ticket,
     rule_id: v.rule_id,
     auto_note: v.auto_note,
-    rule_code: ruleMap[v.rule_id]?.rule_code ?? '',
+    code: ruleMap[v.rule_id]?.code ?? '',
     rule_name: ruleMap[v.rule_id]?.name ?? '',
     category:  ruleMap[v.rule_id]?.category ?? '',
     severity:  ruleMap[v.rule_id]?.severity ?? 'warning',
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
   const { data: rule, error: ruleError } = await supabase
     .from('trading_rules')
-    .select('rule_code, name, category, severity')
+    .select('code, name, category, severity')
     .eq('id', rule_id)
     .single()
 
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     ticket:    data.ticket,
     rule_id:   data.rule_id,
     auto_note: data.auto_note,
-    rule_code: rule.rule_code,
+    code: rule.code,
     rule_name: rule.name,
     category:  rule.category,
     severity:  rule.severity,

@@ -32,14 +32,14 @@ export type ParsedTrade = {
 export type ViolationResult = {
   ticket: string
   rule_id: string
-  rule_code: string
+  code: string
   severity: string
   auto_note: string
 }
 
 type TradingRule = {
   id: string
-  rule_code: string
+  code: string
   name: string
   category: string
   severity: string
@@ -82,7 +82,7 @@ export async function runRuleEngine(
     .eq('detect_type', 'auto')
     .eq('is_active', true)
 
-  console.log('Active auto rules:', rules?.map(r => r.rule_code) ?? [], 'error:', error?.message ?? null)
+  console.log('Active auto rules:', rules?.map(r => r.code) ?? [], 'error:', error?.message ?? null)
 
   if (error || !rules || rules.length === 0) return []
 
@@ -94,7 +94,7 @@ export async function runRuleEngine(
     .single()
 
   const ruleMap: Record<string, TradingRule> = {}
-  for (const r of rules as TradingRule[]) ruleMap[r.rule_code] = r
+  for (const r of rules as TradingRule[]) ruleMap[r.code] = r
 
   // Sort trades by open time ascending
   const sorted = [...trades].sort(
@@ -108,7 +108,7 @@ export async function runRuleEngine(
     const key = `${ticket}:${rule.id}`
     if (seen.has(key)) return
     seen.add(key)
-    violations.push({ ticket, rule_id: rule.id, rule_code: rule.rule_code, severity: rule.severity, auto_note: note })
+    violations.push({ ticket, rule_id: rule.id, code: rule.code, severity: rule.severity, auto_note: note })
   }
 
   // Pre-compute groupings for rules that need them

@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
     },
     violations: violations.map(v => ({
       ticket:    v.ticket,
-      rule_code: v.rule_code,
+      code: v.code,
       severity:  v.severity,
       auto_note: v.auto_note,
     })),

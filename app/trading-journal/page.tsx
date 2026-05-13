@@ -500,13 +500,13 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
   // Fetch account stats whenever selected account changes
   useEffect(() => {
-    if (!selectedId) { setAccountStats(null); return }
+    if (!selectedAccount) { setAccountStats(null); return }
     setStatsLoading(true)
-    fetchAccountStats(selectedId)
+    fetchAccountStats(selectedAccount.id)
       .then(setAccountStats)
       .catch(() => setAccountStats(null))
       .finally(() => setStatsLoading(false))
-  }, [selectedId])
+  }, [selectedAccount?.id])
 
   async function handleUpload(file: File) {
     if (!selectedId) return
@@ -571,8 +571,8 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
                   onClick={() => { setSelectedId(acc.id); setResult(null); writeSelectedAccountCookie(acc.id) }}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
                     selectedId === acc.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-transparent border border-gray-600 text-gray-300 hover:border-gray-400'
                   }`}
                 >
                   {acc.display_name ?? acc.account_code} · {acc.broker}

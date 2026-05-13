@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { appendTrades } from '@/lib/googleSheets'
 import { createDailyPages } from '@/lib/notionJournal'
+import { runRuleEngine, saveViolations, type ParsedTrade } from '@/lib/ruleEngine'
 import type { Trade } from '@/lib/googleSheets'
 
 // ── CSV parsing ───────────────────────────────────────────────────
@@ -25,10 +26,6 @@ function parseCSVLine(line: string): string[] {
   return fields
 }
 
-// FTMO CSV columns (0-indexed):
-// 0:Ticket 1:Open(time) 2:Type 3:Volume 4:Symbol 5:Price(open)
-// 6:SL 7:TP 8:Close(time) 9:Price(close) 10:Swap 11:Commissions
-// 12:Profit 13:Pips 14:Trade duration in seconds
 function parseCSV(csv: string): Trade[] {
   const lines = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n')
   if (lines.length < 2) return []
@@ -57,7 +54,6 @@ function parseCSV(csv: string): Trade[] {
 
 // ── Derived field helpers ─────────────────────────────────────────
 
-// FTMO time format: "2024.01.15 10:30:00" (UTC assumed)
 function ftmoToISO(t: string): string {
   const [date = '', time = '00:00:00'] = t.split(' ')
   return `${date.replace(/\./g, '-')}T${time}Z`
@@ -78,6 +74,28 @@ function getRR(type: string, open: number, close: number, sl: number): number | 
   if (risk <= 0) return null
   const reward = isBuy ? close - open : open - close
   return reward / risk
+}
+
+function toParsedTrade(t: Trade): ParsedTrade {
+  return {
+    ticket:      t.ticket,
+    open:        t.openTime,
+    close:       t.closeTime,
+    type:        t.type,
+    symbol:      t.symbol,
+    volume:      t.volume,
+    openPrice:   t.openPrice,
+    closePrice:  t.closePrice,
+    sl:          t.sl,
+    tp:          t.tp,
+    pips:        t.pips,
+    profit:      t.profit,
+    commission:  t.commission,
+    swap:        t.swap,
+    session:     getSession(t.openTime),
+    rrRatio:     getRR(t.type, t.openPrice, t.closePrice, t.sl) ?? 0,
+    durationMin: t.durationSeconds / 60,
+  }
 }
 
 // ── Route ─────────────────────────────────────────────────────────
@@ -112,18 +130,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No valid trades found in CSV' }, { status: 400 })
   }
 
-  // Google Sheets + Notion (parallel, unchanged)
+  // Google Sheets + Notion (unchanged)
   const [tradesAdded, journalPagesCreated] = await Promise.all([
     appendTrades(trades),
     createDailyPages(trades),
   ])
 
-  // Supabase insert into trading_history
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   )
 
+  // Supabase: upsert trading_history
   const rows = trades.map(t => ({
     account_id:   accountId,
     ticket:       t.ticket,
@@ -152,11 +170,38 @@ export async function POST(req: NextRequest) {
 
   if (sbError) console.error('Supabase upsert error:', sbError.message)
 
+  // Fetch account for balance info
+  const { data: account } = await supabase
+    .from('trading_accounts')
+    .select('initial_balance, current_balance')
+    .eq('id', accountId)
+    .single()
+
+  const balance = account?.current_balance ?? account?.initial_balance ?? 0
+
+  // Rule engine
+  const parsedTrades = trades.map(toParsedTrade)
+  const violations = await runRuleEngine(parsedTrades, accountId, balance)
+  const violationsSaved = await saveViolations(violations, accountId)
+
+  console.log(`Rule engine: ${violations.length} violations found, ${violationsSaved} saved`)
+
   return NextResponse.json({
     tradesAdded,
     journalPagesCreated,
-    totalParsed: trades.length,
-    supabase_inserted: sbData?.length ?? 0,
+    totalParsed:        trades.length,
+    supabase_inserted:  sbData?.length ?? 0,
+    violations_found:   violations.length,
+    violations_by_severity: {
+      critical: violations.filter(v => v.severity === 'critical').length,
+      warning:  violations.filter(v => v.severity === 'warning').length,
+    },
+    violations: violations.map(v => ({
+      ticket:    v.ticket,
+      rule_code: v.rule_code,
+      severity:  v.severity,
+      auto_note: v.auto_note,
+    })),
     trades: trades.slice(0, 100),
   })
 }

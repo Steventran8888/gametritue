@@ -22,11 +22,21 @@ interface TradeRow {
   commission: number
 }
 
+interface ViolationRow {
+  ticket: string
+  rule_code: string
+  severity: string
+  auto_note: string
+}
+
 interface UploadResult {
   tradesAdded: number
   journalPagesCreated: number
   totalParsed: number
   supabase_inserted: number
+  violations_found: number
+  violations_by_severity: { critical: number; warning: number }
+  violations: ViolationRow[]
   trades: TradeRow[]
 }
 
@@ -323,6 +333,85 @@ function AddAccountModal({
   )
 }
 
+// ── Result Panel ─────────────────────────────────────────────────
+
+function ResultPanel({ result }: { result: UploadResult }) {
+  const [expanded, setExpanded] = useState<'critical' | 'warning' | null>(null)
+
+  const criticals = result.violations?.filter(v => v.severity === 'critical') ?? []
+  const warnings  = result.violations?.filter(v => v.severity === 'warning')  ?? []
+
+  function toggle(sev: 'critical' | 'warning') {
+    setExpanded(prev => prev === sev ? null : sev)
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Sync line */}
+      <p className="text-sm text-gray-400">
+        <span className="text-green-400 font-semibold">✓ {result.tradesAdded} trades</span>
+        {' → Sheets · Notion · Supabase '}
+        <span className="text-gray-600">|</span>
+        {' '}
+        <span className="text-gray-500">{result.totalParsed - result.tradesAdded} duplicates skipped</span>
+      </p>
+
+      {/* Violations summary */}
+      {(result.violations_found ?? 0) === 0 ? (
+        <p className="text-xs text-green-600">✓ No rule violations detected</p>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            {criticals.length > 0 && (
+              <button
+                onClick={() => toggle('critical')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition ${
+                  expanded === 'critical' ? 'bg-red-900 text-red-300' : 'bg-red-950 text-red-400 hover:bg-red-900'
+                }`}
+              >
+                🔴 Critical: {criticals.length}
+              </button>
+            )}
+            {warnings.length > 0 && (
+              <button
+                onClick={() => toggle('warning')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition ${
+                  expanded === 'warning' ? 'bg-yellow-900 text-yellow-200' : 'bg-yellow-950 text-yellow-500 hover:bg-yellow-900'
+                }`}
+              >
+                🟡 Warning: {warnings.length}
+              </button>
+            )}
+          </div>
+
+          {expanded && (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-800">
+                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Ticket</th>
+                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Rule</th>
+                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(expanded === 'critical' ? criticals : warnings).map((v, i) => (
+                    <tr key={i} className="border-b border-gray-800/50">
+                      <td className="px-4 py-2 font-mono text-gray-300">{v.ticket}</td>
+                      <td className="px-4 py-2 text-gray-400 whitespace-nowrap">{v.rule_code}</td>
+                      <td className="px-4 py-2 text-gray-500">{v.auto_note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Dashboard ────────────────────────────────────────────────────
 
 function Dashboard({ password, onLogout }: { password: string; onLogout: () => void }) {
@@ -398,9 +487,10 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
             <h1 className="text-white text-2xl font-bold">Trading Journal</h1>
             <p className="text-gray-500 text-sm mt-0.5">Upload FTMO CSV → Sheets · Notion · Supabase</p>
           </div>
-          <button onClick={onLogout} className="text-gray-500 hover:text-gray-300 text-sm transition">
-            Logout
-          </button>
+          <div className="flex items-center gap-4">
+            <a href="/trading-journal/settings" className="text-gray-400 hover:text-white text-sm transition">⚙ Settings</a>
+            <button onClick={onLogout} className="text-gray-500 hover:text-gray-300 text-sm transition">Logout</button>
+          </div>
         </div>
 
         {/* Account bar */}
@@ -508,17 +598,8 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
           </div>
         )}
 
-        {/* Compact result summary */}
-        {result && (
-          <p className="text-sm text-gray-400">
-            <span className="text-green-400 font-semibold">✓ {result.tradesAdded} trades</span>
-            {' → Sheets · Notion · Supabase'}
-            {' '}
-            <span className="text-gray-600">|</span>
-            {' '}
-            <span className="text-gray-500">{result.totalParsed - result.tradesAdded} duplicates skipped</span>
-          </p>
-        )}
+        {/* Compact result summary + violations */}
+        {result && <ResultPanel result={result} />}
 
         {/* Trade preview table */}
         {result && result.trades.length > 0 && (

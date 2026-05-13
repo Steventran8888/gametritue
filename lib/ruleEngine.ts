@@ -1,0 +1,253 @@
+import { createClient } from '@supabase/supabase-js'
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+}
+
+// ── Types ─────────────────────────────────────────────────────────
+
+export type ParsedTrade = {
+  ticket: string
+  open: string        // FTMO format "2024.01.15 10:30:00"
+  close: string
+  type: string        // "buy" | "sell"
+  symbol: string
+  volume: number
+  openPrice: number
+  closePrice: number
+  sl: number
+  tp: number
+  pips: number
+  profit: number
+  commission: number
+  swap: number
+  session: string
+  rrRatio: number     // 0 if undefined/invalid
+  durationMin: number
+}
+
+export type ViolationResult = {
+  ticket: string
+  rule_id: string
+  rule_code: string
+  severity: string
+  auto_note: string
+}
+
+type TradingRule = {
+  id: string
+  rule_code: string
+  name: string
+  category: string
+  severity: string
+  detect_type: string
+  is_active: boolean
+  params: Record<string, number>
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+function ftmsToDate(t: string): Date {
+  const [date = '', time = '00:00:00'] = t.split(' ')
+  return new Date(`${date.replace(/\./g, '-')}T${time}Z`)
+}
+
+function getDateStr(t: string): string {
+  return t.split(' ')[0] ?? ''
+}
+
+// ── Rule Engine ───────────────────────────────────────────────────
+
+export async function runRuleEngine(
+  trades: ParsedTrade[],
+  accountId: string,
+  accountBalance: number,
+): Promise<ViolationResult[]> {
+  const supabase = getSupabase()
+
+  // Fetch active auto rules
+  const { data: rules, error } = await supabase
+    .from('trading_rules')
+    .select('*')
+    .eq('detect_type', 'auto')
+    .eq('is_active', true)
+
+  if (error || !rules || rules.length === 0) return []
+
+  // Fetch account for DD settings
+  const { data: account } = await supabase
+    .from('trading_accounts')
+    .select('daily_dd_pct, total_dd_pct')
+    .eq('id', accountId)
+    .single()
+
+  const ruleMap: Record<string, TradingRule> = {}
+  for (const r of rules as TradingRule[]) ruleMap[r.rule_code] = r
+
+  // Sort trades by open time ascending
+  const sorted = [...trades].sort(
+    (a, b) => ftmsToDate(a.open).getTime() - ftmsToDate(b.open).getTime(),
+  )
+
+  const violations: ViolationResult[] = []
+  const seen = new Set<string>() // dedup by ticket+rule_id
+
+  function addViolation(ticket: string, rule: TradingRule, note: string) {
+    const key = `${ticket}:${rule.id}`
+    if (seen.has(key)) return
+    seen.add(key)
+    violations.push({ ticket, rule_id: rule.id, rule_code: rule.rule_code, severity: rule.severity, auto_note: note })
+  }
+
+  // Pre-compute groupings for rules that need them
+  const byDate: Record<string, ParsedTrade[]> = {}
+  for (const t of sorted) {
+    const d = getDateStr(t.open)
+    if (!byDate[d]) byDate[d] = []
+    byDate[d].push(t)
+  }
+
+  // OVERTRADING — pre-compute before per-trade loop
+  const r_overtrading = ruleMap['OVERTRADING']
+  if (r_overtrading) {
+    for (const [date, dayTrades] of Object.entries(byDate)) {
+      const max = r_overtrading.params.max_trades ?? 3
+      if (dayTrades.length > max) {
+        for (const t of dayTrades) {
+          addViolation(t.ticket, r_overtrading, `${dayTrades.length} trades on ${date}, max is ${max}`)
+        }
+      }
+    }
+  }
+
+  // DAILY_DD_BREACH — pre-compute
+  const r_daily_dd = ruleMap['DAILY_DD_BREACH']
+  if (r_daily_dd && account?.daily_dd_pct != null) {
+    const limit = accountBalance * (account.daily_dd_pct / 100)
+    for (const [date, dayTrades] of Object.entries(byDate)) {
+      const dailyPnL = dayTrades.reduce((s, t) => s + t.profit + t.commission, 0)
+      if (dailyPnL < -limit) {
+        for (const t of dayTrades) {
+          addViolation(t.ticket, r_daily_dd, `Daily loss ${Math.abs(dailyPnL).toFixed(2)} exceeds limit ${limit.toFixed(2)} on ${date}`)
+        }
+      }
+    }
+  }
+
+  // Per-trade loop
+  let streak = 0              // consecutive losses
+  let runningBalance = accountBalance
+
+  for (let i = 0; i < sorted.length; i++) {
+    const t = sorted[i]
+    const prev = i > 0 ? sorted[i - 1] : null
+
+    // RR_LOW
+    const r_rr_low = ruleMap['RR_LOW']
+    if (r_rr_low && t.rrRatio > 0 && t.rrRatio < (r_rr_low.params.min_rr ?? 2)) {
+      addViolation(t.ticket, r_rr_low, `RR = ${t.rrRatio.toFixed(2)}, below minimum ${r_rr_low.params.min_rr}`)
+    }
+
+    // RR_HIGH
+    const r_rr_high = ruleMap['RR_HIGH']
+    if (r_rr_high && t.rrRatio > (r_rr_high.params.max_rr ?? 5)) {
+      addViolation(t.ticket, r_rr_high, `RR = ${t.rrRatio.toFixed(2)}, above maximum ${r_rr_high.params.max_rr} — possible greed`)
+    }
+
+    // NO_SL
+    const r_no_sl = ruleMap['NO_SL']
+    if (r_no_sl && (!t.sl || t.sl === 0)) {
+      addViolation(t.ticket, r_no_sl, `Trade opened without stop loss`)
+    }
+
+    // RISK_HIGH / RISK_MEDIUM
+    if (t.sl && t.sl !== 0) {
+      const r_risk_high = ruleMap['RISK_HIGH']
+      const r_risk_med = ruleMap['RISK_MEDIUM']
+      const contractSize = r_risk_high?.params.contract_size ?? r_risk_med?.params.contract_size ?? 100000
+      const riskAmt = t.volume * Math.abs(t.openPrice - t.sl) * contractSize
+      const riskPct = (riskAmt / accountBalance) * 100
+
+      if (r_risk_high && riskPct > (r_risk_high.params.max_risk_pct ?? 2)) {
+        addViolation(t.ticket, r_risk_high, `Risk = ${riskPct.toFixed(2)}%, exceeds max ${r_risk_high.params.max_risk_pct}%`)
+      } else if (r_risk_med && riskPct > (r_risk_med.params.warn_risk_pct ?? 1)) {
+        addViolation(t.ticket, r_risk_med, `Risk = ${riskPct.toFixed(2)}%, above optimal ${r_risk_med.params.warn_risk_pct}%`)
+      }
+    }
+
+    // SESSION_US
+    const r_session = ruleMap['SESSION_US']
+    if (r_session && t.session === 'US') {
+      addViolation(t.ticket, r_session, `Trade opened during US session`)
+    }
+
+    // HOLD_TOO_LONG
+    const r_long = ruleMap['HOLD_TOO_LONG']
+    if (r_long && t.durationMin > (r_long.params.max_hours ?? 24) * 60) {
+      addViolation(t.ticket, r_long, `Held for ${(t.durationMin / 60).toFixed(1)}h, max is ${r_long.params.max_hours}h`)
+    }
+
+    // HOLD_TOO_SHORT
+    const r_short = ruleMap['HOLD_TOO_SHORT']
+    if (r_short && t.durationMin < (r_short.params.min_minutes ?? 5)) {
+      addViolation(t.ticket, r_short, `Closed after ${t.durationMin.toFixed(0)} min, minimum is ${r_short.params.min_minutes} min`)
+    }
+
+    // REVENGE_TRADE
+    const r_revenge = ruleMap['REVENGE_TRADE']
+    if (r_revenge && prev && prev.profit < 0) {
+      const prevClose = ftmsToDate(prev.close)
+      const currOpen = ftmsToDate(t.open)
+      const minutesDiff = (currOpen.getTime() - prevClose.getTime()) / 60000
+      if (minutesDiff >= 0 && minutesDiff < (r_revenge.params.minutes ?? 30)) {
+        addViolation(t.ticket, r_revenge, `Opened ${minutesDiff.toFixed(0)} min after previous loss`)
+      }
+    }
+
+    // CONSEC_LOSS — check streak BEFORE updating it
+    const r_consec = ruleMap['CONSEC_LOSS']
+    if (r_consec && i > 0 && streak >= (r_consec.params.max_losses ?? 3)) {
+      addViolation(t.ticket, r_consec, `Opened after ${streak} consecutive losses`)
+    }
+    // Update streak
+    if (t.profit < 0) streak++
+    else streak = 0
+
+    // TOTAL_DD_WARNING — running equity check
+    runningBalance += t.profit + t.commission
+    const r_total_dd = ruleMap['TOTAL_DD_WARNING']
+    if (r_total_dd && account?.total_dd_pct != null) {
+      const maxDD = accountBalance * (account.total_dd_pct / 100)
+      const threshPct = (r_total_dd.params.threshold_pct ?? 80) / 100
+      const warningLevel = accountBalance - maxDD * threshPct
+      if (runningBalance < warningLevel) {
+        addViolation(t.ticket, r_total_dd, `Equity at ${runningBalance.toFixed(2)}, approaching DD limit`)
+      }
+    }
+  }
+
+  return violations
+}
+
+export async function saveViolations(
+  violations: ViolationResult[],
+  accountId: string,
+): Promise<number> {
+  if (violations.length === 0) return 0
+  const supabase = getSupabase()
+  const rows = violations.map(v => ({
+    account_id: accountId,
+    ticket: v.ticket,
+    rule_id: v.rule_id,
+    auto_note: v.auto_note,
+  }))
+  const { data, error } = await supabase
+    .from('rule_violations')
+    .upsert(rows, { onConflict: 'account_id,ticket,rule_id', ignoreDuplicates: true })
+    .select('ticket')
+  if (error) console.error('saveViolations error:', error.message)
+  return data?.length ?? 0
+}

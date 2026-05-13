@@ -21,8 +21,10 @@ interface UploadResult {
 }
 
 export default function TradingJournalPage() {
-  const [checking, setChecking] = useState(true)
-  const [authenticated, setAuthenticated] = useState(false)
+  const [authenticated, setAuthenticated] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return document.cookie.split(';').some(c => c.trim().startsWith('journal_auth=true'))
+  })
   const [password, setPassword] = useState('')
   const [pwError, setPwError] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -31,10 +33,15 @@ export default function TradingJournalPage() {
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // Prevent browser from navigating away when a file is dropped outside the drop zone
   useEffect(() => {
-    const isAuthed = document.cookie.split(';').some(c => c.trim().startsWith('journal_auth=true'))
-    if (isAuthed) setAuthenticated(true)
-    setChecking(false)
+    const prevent = (e: DragEvent) => e.preventDefault()
+    window.addEventListener('dragover', prevent)
+    window.addEventListener('drop', prevent)
+    return () => {
+      window.removeEventListener('dragover', prevent)
+      window.removeEventListener('drop', prevent)
+    }
   }, [])
 
   function handleLogin(e: React.FormEvent) {
@@ -93,8 +100,6 @@ export default function TradingJournalPage() {
     }
   }
 
-  if (checking) return null
-
   // ── Password screen ──────────────────────────────────────────────
   if (!authenticated) {
     return (
@@ -152,10 +157,12 @@ export default function TradingJournalPage() {
           role="button"
           tabIndex={0}
           onKeyDown={e => e.key === 'Enter' && fileRef.current?.click()}
-          onDragOver={e => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
+          onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+          onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragging(false) }}
           onDrop={e => {
             e.preventDefault()
+            e.stopPropagation()
             setDragging(false)
             const f = e.dataTransfer.files[0]
             if (f) handleUpload(f)

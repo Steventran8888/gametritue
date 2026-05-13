@@ -22,10 +22,11 @@ const APPLE_SVG = (
 export default function LoginPage() {
   async function signInWithGoogle() {
     const supabase = createClient()
+    const next = new URLSearchParams(window.location.search).get('next') || '/game'
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
         queryParams: { prompt: 'select_account' },
       },
     })
@@ -33,9 +34,12 @@ export default function LoginPage() {
 
   async function signInWithApple() {
     const supabase = createClient()
+    const next = new URLSearchParams(window.location.search).get('next') || '/game'
     await supabase.auth.signInWithOAuth({
       provider: 'apple',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      },
     })
   }
 

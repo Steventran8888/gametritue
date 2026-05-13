@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createAuthClient } from '../lib/supabase'
 import {
   ACCOUNT_TYPE_PRESETS,
   type TradingAccount,
@@ -14,6 +15,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 )
+
+// Auth-aware client (reads Supabase session cookies)
+const authSupabase = createAuthClient()
 
 // Test query on module load
 if (typeof window !== 'undefined') {
@@ -214,9 +218,9 @@ function AddViolationDropdown({
   )
 }
 
-// ── LoginGate ────────────────────────────────────────────────────
+// ── PasswordScreen ────────────────────────────────────────────────
 
-function LoginGate({ onSuccess }: { onSuccess: (pw: string) => void }) {
+function PasswordScreen({ onUnlock }: { onUnlock: () => void }) {
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
@@ -234,8 +238,7 @@ function LoginGate({ onSuccess }: { onSuccess: (pw: string) => void }) {
         body: JSON.stringify({ password }),
       })
       if (res.ok) {
-        document.cookie = `journal_auth=true; path=/; max-age=86400; SameSite=Strict`
-        onSuccess(password)
+        onUnlock()
       } else {
         setError('Sai mật khẩu')
       }
@@ -250,8 +253,8 @@ function LoginGate({ onSuccess }: { onSuccess: (pw: string) => void }) {
     <main className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-xl">
         <div className="mb-6">
-          <h1 className="text-white text-xl font-bold">Trading Journal</h1>
-          <p className="text-gray-400 text-sm mt-1">Private — enter password to continue</p>
+          <h1 className="text-white text-xl font-bold">🔓 Unlock Journal</h1>
+          <p className="text-gray-400 text-sm mt-1">Enter password to continue</p>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="relative">
@@ -501,7 +504,7 @@ function ResultPanel({ result }: { result: UploadResult }) {
 
 // ── Dashboard ────────────────────────────────────────────────────
 
-function Dashboard({ password, onLogout }: { password: string; onLogout: () => void }) {
+function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => void }) {
   // Account
   const [accounts, setAccounts] = useState<TradingAccount[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -650,7 +653,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
     try {
       await fetch('/api/trading-journal/rescan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-journal-password': password },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account_id: accountId }),
       })
       await Promise.all([
@@ -714,7 +717,6 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
     try {
       const res = await fetch('/api/trading-journal/upload', {
         method: 'POST',
-        headers: { 'x-journal-password': password },
         body: formData,
       })
       if (res.status === 401) { onLogout(); return }
@@ -761,6 +763,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
               ↑ Upload CSV
             </button>
             <a href="/trading-journal/settings" className="text-gray-400 hover:text-white text-sm transition">⚙ Settings</a>
+            <button onClick={onLock} className="text-gray-400 hover:text-white text-sm transition">🔒 Lock</button>
             <button onClick={onLogout} className="text-gray-500 hover:text-gray-300 text-sm transition">Logout</button>
           </div>
         </div>
@@ -1086,23 +1089,55 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 // ── Root ─────────────────────────────────────────────────────────
 
 export default function TradingJournalPage() {
-  const [authed, setAuthed] = useState(false)
-  const [checking, setChecking] = useState(true)
-  const [password, setPassword] = useState('')
+  const [session, setSession] = useState<unknown>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [isLocked, setIsLocked] = useState(false)
 
   useEffect(() => {
-    const ok = document.cookie.split(';').some(c => c.trim() === 'journal_auth=true')
-    setAuthed(ok)
-    setChecking(false)
+    authSupabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setSessionLoading(false)
+      if (!session) {
+        window.location.href = '/login?next=/trading-journal'
+        return
+      }
+      // Ensure journal_auth cookie is set so API routes accept cookie auth
+      document.cookie = 'journal_auth=true; path=/; max-age=86400; SameSite=Strict'
+      const locked = document.cookie.split(';').some(c => c.trim() === 'journal_locked=true')
+      setIsLocked(locked)
+    })
   }, [])
 
-  function handleLogout() {
-    document.cookie = `journal_auth=; path=/; max-age=0`
-    setAuthed(false)
-    setPassword('')
+  function handleLock() {
+    document.cookie = 'journal_locked=true; path=/; max-age=86400; SameSite=Strict'
+    setIsLocked(true)
   }
 
-  if (checking) return null
-  if (!authed) return <LoginGate onSuccess={pw => { setPassword(pw); setAuthed(true) }} />
-  return <Dashboard password={password} onLogout={handleLogout} />
+  async function handleLogout() {
+    document.cookie = 'journal_auth=; path=/; max-age=0'
+    document.cookie = 'journal_locked=; path=/; max-age=0'
+    await authSupabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
+  if (sessionLoading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <span className="animate-spin text-white text-2xl inline-block">↻</span>
+      </div>
+    )
+  }
+
+  if (!session) return null // redirect in progress
+
+  if (isLocked) {
+    return (
+      <PasswordScreen onUnlock={() => {
+        document.cookie = 'journal_locked=; path=/; max-age=0'
+        setIsLocked(false)
+      }} />
+    )
+  }
+
+  return <Dashboard onLock={handleLock} onLogout={handleLogout} />
 }

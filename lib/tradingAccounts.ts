@@ -38,10 +38,14 @@ export type TradingAccount = {
 export type AccountInput = Omit<TradingAccount, 'id'>
 
 export async function getAccounts(): Promise<TradingAccount[]> {
-  const { data, error } = await getClient()
+  const client = getClient()
+  const { data: { user } } = await client.auth.getUser()
+  console.log('[getAccounts] current user:', user?.id ?? 'anon')
+  const { data, error } = await client
     .from('trading_accounts')
     .select('*')
     .order('created_at', { ascending: true })
+  console.log('[getAccounts] result:', data?.length, 'rows | error:', error?.message ?? null)
   if (error) throw new Error(error.message)
   return (data ?? []) as TradingAccount[]
 }

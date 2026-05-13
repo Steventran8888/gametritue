@@ -567,7 +567,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         const match = cookieId ? accs.find(a => a.id === cookieId) : null
         setSelectedId(match ? match.id : accs[0].id)
       })
-      .catch(() => {})
+      .catch(err => console.error('[Dashboard] getAccounts error:', err))
       .finally(() => setLoadingAccounts(false))
   }, [])
 

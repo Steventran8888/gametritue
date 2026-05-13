@@ -32,24 +32,21 @@ export default function TradingJournalPage() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('journal_pw')
-    if (stored) {
-      setPassword(stored)
-      setAuthenticated(true)
-    }
+    const isAuthed = document.cookie.split(';').some(c => c.trim().startsWith('journal_auth=true'))
+    if (isAuthed) setAuthenticated(true)
     setChecking(false)
   }, [])
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     if (!password.trim()) { setPwError('Enter a password'); return }
-    sessionStorage.setItem('journal_pw', password)
+    document.cookie = `journal_auth=true; path=/; max-age=86400; SameSite=Strict`
     setPwError('')
     setAuthenticated(true)
   }
 
   function handleLogout() {
-    sessionStorage.removeItem('journal_pw')
+    document.cookie = `journal_auth=; path=/; max-age=0`
     setAuthenticated(false)
     setPassword('')
     setResult(null)
@@ -68,7 +65,7 @@ export default function TradingJournalPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    const pw = sessionStorage.getItem('journal_pw') ?? password
+    const pw = password
 
     try {
       const res = await fetch('/api/trading-journal/upload', {

@@ -131,7 +131,6 @@ export async function createDailyPages(trades: Trade[]): Promise<number> {
       console.log('Creating page with payload:', JSON.stringify(pagePayload, null, 2))
 
       try {
-        // @ts-expect-error — Notion SDK types don't expose nested children in create, but the API supports it
         await notion.pages.create(pagePayload)
         created++
       } catch (err: any) {

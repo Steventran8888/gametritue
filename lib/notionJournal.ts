@@ -70,8 +70,12 @@ function buildTradeTable(trades: Trade[]) {
 
   return {
     type: 'table' as const,
-    table: { table_width: cols.length, has_column_header: true, has_row_header: false },
-    children: [headerRow, ...dataRows],
+    table: {
+      table_width: cols.length,
+      has_column_header: true,
+      has_row_header: false,
+      children: [headerRow, ...dataRows],
+    },
   }
 }
 

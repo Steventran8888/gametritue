@@ -537,13 +537,17 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
       .finally(() => setLoadingAccounts(false))
   }, [])
 
-  // Load all trading rules for the add-violation dropdown (once)
+  // Load all active trading rules for the add-violation dropdown (once)
   useEffect(() => {
     getSupa()
       .from('trading_rules')
       .select('id, rule_code, name, category, severity')
+      .eq('is_active', true)
       .order('category')
-      .then(({ data }) => { if (data) setAllRules(data as RuleOption[]) })
+      .then(({ data, error }) => {
+        if (error) console.error('fetchRules error:', error)
+        setAllRules((data as RuleOption[]) ?? [])
+      })
   }, [])
 
   // ── Data loaders ─────────────────────────────────────────────────
@@ -628,21 +632,16 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
       body: JSON.stringify({ account_id: selectedId, ticket, rule_id: ruleId }),
     })
     if (res.ok) {
-      const v = await res.json() as ViolationWithRule
-      setViolations(prev => {
-        // Replace if duplicate ticket+rule_id (upsert may return same record)
-        const exists = prev.some(x => x.ticket === v.ticket && x.rule_id === v.rule_id)
-        return exists ? prev.map(x => (x.ticket === v.ticket && x.rule_id === v.rule_id ? v : x)) : [...prev, v]
-      })
+      await loadViolations(selectedId)
       fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})
     }
   }
 
   async function handleDeleteViolation(violationId: string) {
     const res = await fetch(`/api/trading-journal/violations/${violationId}`, { method: 'DELETE' })
-    if (res.ok) {
-      setViolations(prev => prev.filter(v => v.id !== violationId))
-      if (selectedId) fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})
+    if (res.ok && selectedId) {
+      await loadViolations(selectedId)
+      fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})
     }
   }
 
@@ -936,14 +935,18 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
       </div>
 
       {/* Add-violation dropdown (rendered outside the table to avoid overflow clipping) */}
-      {addingForTicket && dropdownPos && (
-        <AddViolationDropdown
-          rules={allRules}
-          pos={dropdownPos}
-          onSelect={ruleId => handleAddViolation(addingForTicket, ruleId)}
-          onClose={() => { setAddingForTicket(null); setDropdownPos(null) }}
-        />
-      )}
+      {addingForTicket && dropdownPos && (() => {
+        const appliedRuleIds = new Set(violations.filter(v => v.ticket === addingForTicket).map(v => v.rule_id))
+        const availableRules = allRules.filter(r => !appliedRuleIds.has(r.id))
+        return (
+          <AddViolationDropdown
+            rules={availableRules}
+            pos={dropdownPos}
+            onSelect={ruleId => handleAddViolation(addingForTicket, ruleId)}
+            onClose={() => { setAddingForTicket(null); setDropdownPos(null) }}
+          />
+        )
+      })()}
 
       {showAddModal && (
         <AddAccountModal

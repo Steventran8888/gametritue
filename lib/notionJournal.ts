@@ -116,21 +116,26 @@ export async function createDailyPages(trades: Trade[]): Promise<number> {
       const title = `Journal - ${date}`
       if (existingTitles.has(title)) continue
 
+      const pagePayload = {
+        parent: { page_id: parentId },
+        properties: {
+          title: { title: richText(title) },
+        },
+        children: buildPageBlocks(dayTrades),
+      }
+
+      console.log('Creating page with payload:', JSON.stringify(pagePayload, null, 2))
+
       try {
-        await notion.pages.create({
-          parent: { page_id: parentId },
-          properties: {
-            title: { title: richText(title) },
-          },
-          // @ts-expect-error — Notion SDK types don't expose nested children in create, but the API supports it
-          children: buildPageBlocks(dayTrades),
-        })
+        // @ts-expect-error — Notion SDK types don't expose nested children in create, but the API supports it
+        await notion.pages.create(pagePayload)
         created++
-      } catch (err) {
+      } catch (err: any) {
+        console.error('Notion pages.create error:', err?.body || err?.message || JSON.stringify(err))
         console.error('Notion error full:', JSON.stringify(err, null, 2))
         console.log('Using parent ID:', process.env.NOTION_JOURNAL_PARENT_ID)
         console.log('API key prefix:', process.env.NOTION_API_KEY?.slice(0, 10))
-        throw new Error(`Notion page creation failed for "${title}": ${err instanceof Error ? err.message : JSON.stringify(err)}`)
+        throw err
       }
     }
 

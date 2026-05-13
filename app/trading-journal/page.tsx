@@ -1,6 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import {
+  ACCOUNT_TYPE_PRESETS,
+  type TradingAccount,
+  type AccountInput,
+  getAccounts,
+  createAccount,
+} from '@/lib/tradingAccounts'
+
+// ── Types ─────────────────────────────────────────────────────────
 
 interface TradeRow {
   ticket: string
@@ -17,18 +26,8 @@ interface UploadResult {
   tradesAdded: number
   journalPagesCreated: number
   totalParsed: number
+  supabase_inserted: number
   trades: TradeRow[]
-}
-
-// ── Shared helper ────────────────────────────────────────────────
-
-function Stat({ value, label, color }: { value: number; label: string; color: string }) {
-  return (
-    <div>
-      <p className={`text-3xl font-bold ${color}`}>{value}</p>
-      <p className="text-gray-400 text-sm mt-0.5">{label}</p>
-    </div>
-  )
 }
 
 // ── LoginGate ────────────────────────────────────────────────────
@@ -115,16 +114,231 @@ function LoginGate({ onSuccess }: { onSuccess: (pw: string) => void }) {
   )
 }
 
+// ── Add Account Modal ─────────────────────────────────────────────
+
+function AddAccountModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void
+  onSaved: (account: TradingAccount) => void
+}) {
+  const presetKeys = Object.keys(ACCOUNT_TYPE_PRESETS)
+  const defaultType = presetKeys[0] ?? 'FTMO 1-Step'
+  const defaultPreset = ACCOUNT_TYPE_PRESETS[defaultType]!
+
+  const [broker, setBroker] = useState('')
+  const [accountCode, setAccountCode] = useState('')
+  const [accountType, setAccountType] = useState(defaultType)
+  const [displayName, setDisplayName] = useState('')
+  const [currency, setCurrency] = useState('USD')
+  const [initialBalance, setInitialBalance] = useState('')
+  const [dailyDdPct, setDailyDdPct] = useState(
+    defaultPreset.daily_dd_pct != null ? String(defaultPreset.daily_dd_pct) : '',
+  )
+  const [totalDdPct, setTotalDdPct] = useState(
+    defaultPreset.total_dd_pct != null ? String(defaultPreset.total_dd_pct) : '',
+  )
+  const [ddType, setDdType] = useState(defaultPreset.dd_type ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function handleTypeChange(type: string) {
+    setAccountType(type)
+    const preset = ACCOUNT_TYPE_PRESETS[type]
+    if (preset) {
+      setDailyDdPct(preset.daily_dd_pct != null ? String(preset.daily_dd_pct) : '')
+      setTotalDdPct(preset.total_dd_pct != null ? String(preset.total_dd_pct) : '')
+      setDdType(preset.dd_type ?? '')
+    }
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!broker.trim() || !accountCode.trim()) {
+      setError('Broker and Account Code are required')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const input: AccountInput = {
+        broker: broker.trim(),
+        account_code: accountCode.trim(),
+        account_type: accountType || null,
+        display_name: displayName.trim() || null,
+        currency: currency.trim() || 'USD',
+        initial_balance: parseFloat(initialBalance) || 0,
+        current_balance: null,
+        daily_dd_pct: dailyDdPct ? parseFloat(dailyDdPct) : null,
+        total_dd_pct: totalDdPct ? parseFloat(totalDdPct) : null,
+        dd_type: ddType || null,
+        is_active: true,
+      }
+      const account = await createAccount(input)
+      onSaved(account)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save account')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const ddTypeLabel = ddType === 'trailing' ? 'Trailing' : ddType === 'static' ? 'Static' : 'None'
+
+  const inputClass = 'w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
+  const labelClass = 'text-xs text-gray-400 font-medium mb-1'
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 className="text-white font-bold text-base mb-5">Add Trading Account</h3>
+        <form onSubmit={handleSave} className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className={labelClass}>Broker *</p>
+              <input
+                list="broker-list"
+                value={broker}
+                onChange={e => setBroker(e.target.value)}
+                placeholder="e.g. FTMO"
+                className={inputClass}
+              />
+              <datalist id="broker-list">
+                {['FTMO', 'Exness', 'Other'].map(b => <option key={b} value={b} />)}
+              </datalist>
+            </div>
+            <div>
+              <p className={labelClass}>Account Code *</p>
+              <input
+                value={accountCode}
+                onChange={e => setAccountCode(e.target.value)}
+                placeholder="e.g. 123456"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className={labelClass}>Account Type</p>
+            <select
+              value={accountType}
+              onChange={e => handleTypeChange(e.target.value)}
+              className={inputClass}
+            >
+              {presetKeys.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <p className={labelClass}>Display Name (optional)</p>
+            <input
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              placeholder="e.g. My FTMO Account"
+              className={inputClass}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className={labelClass}>Currency</p>
+              <input
+                value={currency}
+                onChange={e => setCurrency(e.target.value)}
+                placeholder="USD"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <p className={labelClass}>Initial Balance</p>
+              <input
+                type="number"
+                value={initialBalance}
+                onChange={e => setInitialBalance(e.target.value)}
+                placeholder="e.g. 100000"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className={labelClass}>Daily DD %</p>
+              <input
+                type="number"
+                step="0.1"
+                value={dailyDdPct}
+                onChange={e => setDailyDdPct(e.target.value)}
+                placeholder="—"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <p className={labelClass}>Total DD %</p>
+              <input
+                type="number"
+                step="0.1"
+                value={totalDdPct}
+                onChange={e => setTotalDdPct(e.target.value)}
+                placeholder="—"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <p className={labelClass}>DD Type</p>
+              <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-400">
+                {ddTypeLabel}
+              </div>
+            </div>
+          </div>
+
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-xl border border-gray-700 text-gray-400 text-sm font-semibold hover:border-gray-600 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── Dashboard ────────────────────────────────────────────────────
 
 function Dashboard({ password, onLogout }: { password: string; onLogout: () => void }) {
+  const [accounts, setAccounts] = useState<TradingAccount[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [loadingAccounts, setLoadingAccounts] = useState(true)
+  const [showAddModal, setShowAddModal] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<UploadResult | null>(null)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Prevent browser from navigating when a file is dropped outside the drop zone
+  const selectedAccount = accounts.find(a => a.id === selectedId) ?? null
+
+  // Prevent browser navigation on file drop outside drop zone
   useEffect(() => {
     const prevent = (e: DragEvent) => { e.preventDefault(); e.stopPropagation() }
     window.addEventListener('dragover', prevent)
@@ -135,17 +349,25 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
     }
   }, [])
 
+  // Load accounts on mount
+  useEffect(() => {
+    getAccounts()
+      .then(accs => {
+        setAccounts(accs)
+        if (accs.length > 0) setSelectedId(accs[0].id)
+      })
+      .catch(() => {/* non-fatal */})
+      .finally(() => setLoadingAccounts(false))
+  }, [])
+
   async function handleUpload(file: File) {
-    if (!file.name.endsWith('.csv')) {
-      setError('Please upload a .csv file')
-      return
-    }
-    setUploading(true)
-    setError('')
-    setResult(null)
+    if (!selectedId) return
+    if (!file.name.endsWith('.csv')) { setError('Please upload a .csv file'); return }
+    setUploading(true); setError(''); setResult(null)
 
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('account_id', selectedId)
 
     try {
       const res = await fetch('/api/trading-journal/upload', {
@@ -153,18 +375,10 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
         headers: { 'x-journal-password': password },
         body: formData,
       })
-
-      if (res.status === 401) {
-        onLogout()
-        return
-      }
-
+      if (res.status === 401) { onLogout(); return }
       const data = await res.json()
-      if (!res.ok) {
-        setError(data.error ?? 'Upload failed')
-      } else {
-        setResult(data as UploadResult)
-      }
+      if (!res.ok) setError(data.error ?? 'Upload failed')
+      else setResult(data as UploadResult)
     } catch {
       setError('Network error — please try again')
     } finally {
@@ -172,48 +386,96 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
     }
   }
 
+  const noAccount = !selectedId
+
   return (
-    <main className="min-h-screen bg-gray-950 px-4 py-10">
-      <div className="max-w-5xl mx-auto">
+    <main className="min-h-screen bg-gray-950 px-4 py-8">
+      <div className="max-w-5xl mx-auto space-y-5">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-white text-2xl font-bold">Trading Journal</h1>
-            <p className="text-gray-400 text-sm mt-0.5">
-              Upload FTMO CSV → sync to Google Sheets + Notion
-            </p>
+            <p className="text-gray-500 text-sm mt-0.5">Upload FTMO CSV → Sheets · Notion · Supabase</p>
           </div>
-          <button
-            onClick={onLogout}
-            className="text-gray-500 hover:text-gray-300 text-sm transition"
-          >
+          <button onClick={onLogout} className="text-gray-500 hover:text-gray-300 text-sm transition">
             Logout
           </button>
+        </div>
+
+        {/* Account bar */}
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {loadingAccounts ? (
+              <span className="text-gray-500 text-sm">Loading accounts…</span>
+            ) : accounts.length === 0 ? (
+              <span className="text-gray-500 text-sm">No accounts yet</span>
+            ) : (
+              accounts.map(acc => (
+                <button
+                  key={acc.id}
+                  onClick={() => { setSelectedId(acc.id); setResult(null) }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                    selectedId === acc.id
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {acc.display_name ?? acc.account_code} · {acc.broker}
+                </button>
+              ))
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-800 text-indigo-400 hover:bg-gray-700 border border-indigo-800 transition"
+            >
+              + Add Account
+            </button>
+          </div>
+
+          {/* Account info strip */}
+          {selectedAccount && (
+            <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-800 text-xs text-gray-400">
+              {selectedAccount.account_type && (
+                <span className="px-2 py-0.5 rounded bg-gray-800 text-indigo-300 font-medium">
+                  {selectedAccount.account_type}
+                </span>
+              )}
+              <span>{selectedAccount.currency} {selectedAccount.initial_balance.toLocaleString()}</span>
+              {selectedAccount.daily_dd_pct != null && (
+                <span className="text-yellow-500">Daily: {selectedAccount.daily_dd_pct}%</span>
+              )}
+              {selectedAccount.total_dd_pct != null && (
+                <span className="text-orange-500">
+                  Total: {selectedAccount.total_dd_pct}%
+                  {selectedAccount.dd_type ? ` ${selectedAccount.dd_type}` : ''}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Drop zone */}
         <div
           role="button"
-          tabIndex={0}
-          onKeyDown={e => e.key === 'Enter' && fileRef.current?.click()}
-          onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
-          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+          tabIndex={noAccount ? -1 : 0}
+          onKeyDown={e => !noAccount && e.key === 'Enter' && fileRef.current?.click()}
+          onDragEnter={e => { e.preventDefault(); e.stopPropagation(); if (!noAccount) setDragging(true) }}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (!noAccount) setDragging(true) }}
           onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragging(false) }}
           onDrop={e => {
-            e.preventDefault()
-            e.stopPropagation()
-            setDragging(false)
-            const f = e.dataTransfer.files[0]
-            if (f) handleUpload(f)
+            e.preventDefault(); e.stopPropagation(); setDragging(false)
+            if (!noAccount) { const f = e.dataTransfer.files[0]; if (f) handleUpload(f) }
           }}
-          onClick={() => !uploading && fileRef.current?.click()}
-          className={`rounded-2xl border-2 border-dashed p-14 text-center cursor-pointer transition select-none mb-6 ${
-            dragging
-              ? 'border-indigo-500 bg-indigo-500/10'
+          onClick={() => !noAccount && !uploading && fileRef.current?.click()}
+          className={`rounded-2xl border-2 border-dashed p-12 text-center transition select-none ${
+            noAccount
+              ? 'border-gray-800 bg-gray-900/50 opacity-50 cursor-not-allowed'
+              : dragging
+              ? 'border-indigo-500 bg-indigo-500/10 cursor-pointer'
               : uploading
               ? 'border-gray-700 bg-gray-900 cursor-not-allowed'
-              : 'border-gray-700 bg-gray-900 hover:border-gray-600 hover:bg-gray-800/50'
+              : 'border-gray-700 bg-gray-900 hover:border-gray-600 hover:bg-gray-800/50 cursor-pointer'
           }`}
         >
           <input
@@ -221,13 +483,11 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
             type="file"
             accept=".csv"
             className="hidden"
-            onChange={e => {
-              const f = e.target.files?.[0]
-              if (f) handleUpload(f)
-              e.target.value = ''
-            }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = '' }}
           />
-          {uploading ? (
+          {noAccount ? (
+            <p className="text-gray-500 text-sm">Select an account above to upload</p>
+          ) : uploading ? (
             <div className="flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
               <p className="text-indigo-400 text-sm font-medium">Uploading and processing…</p>
@@ -241,24 +501,23 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
           )}
         </div>
 
-        {/* Error banner */}
+        {/* Error */}
         {error && (
-          <div className="bg-red-950 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm mb-6">
+          <div className="bg-red-950 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
             {error}
           </div>
         )}
 
-        {/* Result summary */}
+        {/* Compact result summary */}
         {result && (
-          <div className="mb-6 bg-gray-900 border border-gray-800 rounded-2xl p-6">
-            <h2 className="text-white font-semibold mb-4">Upload complete</h2>
-            <div className="flex flex-wrap gap-6">
-              <Stat value={result.totalParsed} label="trades parsed" color="text-gray-300" />
-              <Stat value={result.tradesAdded} label="added to Google Sheets" color="text-green-400" />
-              <Stat value={result.journalPagesCreated} label="journal pages created in Notion" color="text-purple-400" />
-              <Stat value={result.totalParsed - result.tradesAdded} label="duplicates skipped" color="text-gray-500" />
-            </div>
-          </div>
+          <p className="text-sm text-gray-400">
+            <span className="text-green-400 font-semibold">✓ {result.tradesAdded} trades</span>
+            {' → Sheets · Notion · Supabase'}
+            {' '}
+            <span className="text-gray-600">|</span>
+            {' '}
+            <span className="text-gray-500">{result.totalParsed - result.tradesAdded} duplicates skipped</span>
+          </p>
         )}
 
         {/* Trade preview table */}
@@ -287,9 +546,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
                       <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition">
                         <td className="px-4 py-3 font-mono text-gray-300 text-xs">{t.ticket}</td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                            isBuy ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${isBuy ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'}`}>
                             {t.type.toUpperCase()}
                           </span>
                         </td>
@@ -310,6 +567,17 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
           </div>
         )}
       </div>
+
+      {showAddModal && (
+        <AddAccountModal
+          onClose={() => setShowAddModal(false)}
+          onSaved={acc => {
+            setAccounts(prev => [...prev, acc])
+            setSelectedId(acc.id)
+            setShowAddModal(false)
+          }}
+        />
+      )}
     </main>
   )
 }

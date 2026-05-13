@@ -29,6 +29,26 @@ function fmtTimestamp(iso: string): string {
   try { return new Date(iso).toISOString().replace('T', ' ').substring(0, 16) } catch { return iso }
 }
 
+function fmtTime(iso: string): string {
+  try { return new Date(iso).toISOString().substring(11, 16) } catch { return '' }
+}
+
+function getDateKey(iso: string): string {
+  try { return new Date(iso).toISOString().substring(0, 10) } catch { return iso.substring(0, 10) }
+}
+
+const VI_DAYS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy']
+
+function formatDayLabel(dateKey: string): string {
+  try {
+    const d = new Date(dateKey + 'T00:00:00Z')
+    const dow = VI_DAYS[d.getUTCDay()]
+    const dd  = String(d.getUTCDate()).padStart(2, '0')
+    const mm  = String(d.getUTCMonth() + 1).padStart(2, '0')
+    return `${dow}, ${dd}/${mm}/${d.getUTCFullYear()}`
+  } catch { return dateKey }
+}
+
 // ── Types ─────────────────────────────────────────────────────────
 
 interface TradeHistoryRow {
@@ -86,6 +106,61 @@ interface AccountStats {
   win_trades: number
   total_pnl: number
   violations: number
+}
+
+interface DayGroup {
+  dateKey: string
+  dateLabel: string
+  trades: TradeHistoryRow[]
+  totalPnl: number
+  criticalCount: number
+  warningCount: number
+  topCodes: { code: string; name: string; severity: string }[]
+  dayViolations: ViolationWithRule[]
+}
+
+function groupByDay(trades: TradeHistoryRow[], violations: ViolationWithRule[]): DayGroup[] {
+  const dayMap = new Map<string, TradeHistoryRow[]>()
+  for (const t of trades) {
+    const key = getDateKey(t.close_time)
+    if (!dayMap.has(key)) dayMap.set(key, [])
+    dayMap.get(key)!.push(t)
+  }
+  return Array.from(dayMap.entries())
+    .sort(([a], [b]) => b.localeCompare(a)) // newest first
+    .map(([dateKey, dayTrades]) => {
+      const totalPnl = dayTrades.reduce((s, t) => s + (t.profit ?? 0) + (t.commission ?? 0), 0)
+      const ticketSet = new Set(dayTrades.map(t => t.ticket))
+      const dayViolations = violations.filter(v => ticketSet.has(v.ticket))
+
+      const codeCounts: Record<string, { name: string; severity: string; count: number }> = {}
+      for (const v of dayViolations) {
+        const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
+        const code = rule?.code || v.rule_id
+        if (!codeCounts[code]) codeCounts[code] = { name: rule?.name || code, severity: rule?.severity || 'warning', count: 0 }
+        codeCounts[code].count++
+      }
+      const topCodes = Object.entries(codeCounts)
+        .map(([code, val]) => ({ code, ...val }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+
+      const criticalCount = dayViolations.filter(v => {
+        const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
+        return rule?.severity === 'critical'
+      }).length
+
+      return {
+        dateKey,
+        dateLabel: formatDayLabel(dateKey),
+        trades: dayTrades.sort((a, b) => a.close_time.localeCompare(b.close_time)),
+        totalPnl,
+        criticalCount,
+        warningCount: dayViolations.length - criticalCount,
+        topCodes,
+        dayViolations,
+      }
+    })
 }
 
 async function fetchAccountStats(accountId: string): Promise<AccountStats> {
@@ -526,6 +601,9 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   const [addingForTicket, setAddingForTicket] = useState<string | null>(null)
   const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
 
+  // Timeline expand/collapse
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
+
   const fileRef = useRef<HTMLInputElement>(null)
   const selectedAccount = accounts.find(a => a.id === selectedId) ?? null
 
@@ -628,6 +706,15 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
     void loadTradeHistory(id)
     void loadViolations(id)
   }, [selectedAccount?.id])
+
+  function toggleDay(dateKey: string) {
+    setExpandedDays(prev => {
+      const next = new Set(prev)
+      if (next.has(dateKey)) next.delete(dateKey)
+      else next.add(dateKey)
+      return next
+    })
+  }
 
   // ── Re-scan ───────────────────────────────────────────────────────
 
@@ -883,91 +970,176 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         {/* Upload result summary + violations (shown after modal closes) */}
         {result && !showUploadModal && <ResultPanel result={result} />}
 
-        {/* Trade History table */}
-        {selectedAccount && (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="text-white font-semibold">Trade History</h2>
-              <span className="text-gray-500 text-sm">
-                {tradeHistoryLoading ? 'Loading…' : `${tradeHistory.length} trades`}
-              </span>
-            </div>
+        {/* Trade History — Timeline */}
+        {selectedAccount && (() => {
+          const dayGroups = groupByDay(tradeHistory, violations)
+          return (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+                <h2 className="text-white font-semibold">Trade History</h2>
+                <span className="text-gray-500 text-sm">
+                  {tradeHistoryLoading ? 'Loading…'
+                    : tradeHistory.length === 0 ? '0 lệnh'
+                    : `${tradeHistory.length} lệnh · ${dayGroups.length} ngày`}
+                </span>
+              </div>
 
-            {tradeHistoryLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : tradeHistory.length === 0 ? (
-              <p className="text-gray-500 text-sm text-center py-8">
-                No trades yet — upload a CSV to get started
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-800">
-                      {['Ticket', 'Type', 'Symbol', 'Open', 'Close', 'Pips', 'Profit', 'Violations'].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tradeHistory.map(t => {
-                      const tradeViolations = violations.filter(v => v.ticket === t.ticket)
-                      const isBuy = t.type.toLowerCase() === 'buy'
-                      const isProfit = t.profit >= 0
-                      return (
-                        <tr key={t.ticket} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition">
-                          <td className="px-4 py-3 font-mono text-gray-300 text-xs">{t.ticket}</td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                              isBuy ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'
+              {tradeHistoryLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : tradeHistory.length === 0 ? (
+                <p className="text-gray-500 text-sm text-center py-8">
+                  Chưa có lệnh nào — upload CSV để bắt đầu
+                </p>
+              ) : (
+                <div>
+                  {dayGroups.map((day, dayIdx) => {
+                    const expanded = expandedDays.has(day.dateKey)
+                    const isPositive = day.totalPnl > 0
+                    const isNegative = day.totalPnl < 0
+                    return (
+                      <div key={day.dateKey} className={dayIdx > 0 ? 'border-t border-gray-800' : ''}>
+
+                        {/* ── Day header row ── */}
+                        <div className={`flex items-center px-4 py-3 gap-2 ${
+                          isNegative ? 'bg-red-900/10' : isPositive ? 'bg-green-900/10' : ''
+                        }`}>
+
+                          {/* Chevron + date label + trade count */}
+                          <button
+                            onClick={() => toggleDay(day.dateKey)}
+                            className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                          >
+                            <svg
+                              className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+                              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                            <span className="text-gray-200 font-medium text-sm truncate">{day.dateLabel}</span>
+                            <span className="text-gray-600 text-xs flex-shrink-0">{day.trades.length} lệnh</span>
+                          </button>
+
+                          {/* Right: top violation codes + severity counts + P&L + note */}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+
+                            {/* Top 3 violation codes */}
+                            {day.topCodes.map(c => (
+                              <span key={c.code} className={`hidden md:inline-block px-1.5 py-0.5 rounded font-mono text-xs ${
+                                c.severity === 'critical'
+                                  ? 'bg-red-900/50 text-red-300'
+                                  : 'bg-yellow-900/50 text-yellow-300'
+                              }`}>{c.code}</span>
+                            ))}
+
+                            {/* Severity counts */}
+                            {(day.criticalCount > 0 || day.warningCount > 0) && (
+                              <span className="text-xs hidden sm:flex items-center gap-1">
+                                {day.criticalCount > 0 && (
+                                  <span className="text-red-400">🔴 {day.criticalCount}</span>
+                                )}
+                                {day.warningCount > 0 && (
+                                  <span className="text-yellow-400">🟡 {day.warningCount}</span>
+                                )}
+                              </span>
+                            )}
+
+                            {/* P&L */}
+                            <span className={`font-semibold text-sm tabular-nums w-24 text-right ${
+                              isPositive ? 'text-green-400' : isNegative ? 'text-red-400' : 'text-gray-500'
                             }`}>
-                              {t.type.toUpperCase()}
+                              {isPositive ? '+' : ''}{day.totalPnl.toFixed(2)}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-200 font-medium">{t.symbol}</td>
-                          <td className="px-4 py-3 font-mono text-gray-400 text-xs whitespace-nowrap">{fmtTimestamp(t.open_time)}</td>
-                          <td className="px-4 py-3 font-mono text-gray-400 text-xs whitespace-nowrap">{fmtTimestamp(t.close_time)}</td>
-                          <td className="px-4 py-3 text-gray-300">{t.pips}</td>
-                          <td className={`px-4 py-3 font-semibold ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
-                            {isProfit ? '+' : ''}{Number(t.profit).toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap items-center gap-1">
-                              {tradeViolations.map(v => (
-                                <ViolationBadge key={v.id} violation={v} onDelete={handleDeleteViolation} />
-                              ))}
-                              <button
-                                onClick={e => {
-                                  const rect = e.currentTarget.getBoundingClientRect()
-                                  if (addingForTicket === t.ticket) {
-                                    setAddingForTicket(null)
-                                    setDropdownPos(null)
-                                  } else {
-                                    const openUpward = window.innerHeight - rect.bottom < 300
-                                    setAddingForTicket(t.ticket)
-                                    setDropdownPos({ anchorTop: rect.top, anchorBottom: rect.bottom, left: rect.left, openUpward })
-                                  }
-                                }}
-                                className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white text-xs flex items-center justify-center transition flex-shrink-0"
-                                title="Tag a violation"
-                              >
-                                ＋
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+
+                            {/* Note placeholder */}
+                            <button
+                              onClick={e => e.stopPropagation()}
+                              className="text-xs text-gray-700 hover:text-gray-500 transition whitespace-nowrap"
+                              title="Thêm ghi chú (coming soon)"
+                            >
+                              + Ghi chú
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* ── Expanded trade rows ── */}
+                        <div
+                          className="overflow-hidden"
+                          style={{
+                            maxHeight: expanded ? `${day.trades.length * 56 + 48}px` : '0px',
+                            transition: 'max-height 0.25s ease-in-out',
+                          }}
+                        >
+                          <div className="border-t border-gray-800/60 bg-gray-950/40 overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-gray-800/60">
+                                  {['Ticket', 'Type', 'Symbol', 'Mở', 'Đóng', 'Pips', 'Profit', 'Violations'].map(h => (
+                                    <th key={h} className="px-4 py-2 text-left text-gray-600 font-medium whitespace-nowrap">{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {day.trades.map(t => {
+                                  const tradeViolations = violations.filter(v => v.ticket === t.ticket)
+                                  const isBuy = t.type.toLowerCase() === 'buy'
+                                  const isProfit = t.profit >= 0
+                                  return (
+                                    <tr key={t.ticket} className="border-b border-gray-800/30 hover:bg-gray-800/20 transition">
+                                      <td className="px-4 py-2.5 font-mono text-gray-400">{t.ticket}</td>
+                                      <td className="px-4 py-2.5">
+                                        <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                                          isBuy ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'
+                                        }`}>{t.type.toUpperCase()}</span>
+                                      </td>
+                                      <td className="px-4 py-2.5 text-gray-300 font-medium">{t.symbol}</td>
+                                      <td className="px-4 py-2.5 font-mono text-gray-500 whitespace-nowrap">{fmtTime(t.open_time)}</td>
+                                      <td className="px-4 py-2.5 font-mono text-gray-500 whitespace-nowrap">{fmtTime(t.close_time)}</td>
+                                      <td className="px-4 py-2.5 text-gray-400">{t.pips}</td>
+                                      <td className={`px-4 py-2.5 font-semibold ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
+                                        {isProfit ? '+' : ''}{Number(t.profit).toFixed(2)}
+                                      </td>
+                                      <td className="px-4 py-2.5">
+                                        <div className="flex flex-wrap items-center gap-1">
+                                          {tradeViolations.map(v => (
+                                            <ViolationBadge key={v.id} violation={v} onDelete={handleDeleteViolation} />
+                                          ))}
+                                          <button
+                                            onClick={e => {
+                                              const rect = e.currentTarget.getBoundingClientRect()
+                                              if (addingForTicket === t.ticket) {
+                                                setAddingForTicket(null)
+                                                setDropdownPos(null)
+                                              } else {
+                                                const openUpward = window.innerHeight - rect.bottom < 300
+                                                setAddingForTicket(t.ticket)
+                                                setDropdownPos({ anchorTop: rect.top, anchorBottom: rect.bottom, left: rect.left, openUpward })
+                                              }
+                                            }}
+                                            className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white flex items-center justify-center transition flex-shrink-0"
+                                            title="Tag violation"
+                                          >
+                                            ＋
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Add-violation dropdown (rendered outside the table to avoid overflow clipping) */}

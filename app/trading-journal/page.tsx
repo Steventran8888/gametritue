@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { createClient as createAuthClient } from '../lib/supabase'
 import {
   ACCOUNT_TYPE_PRESETS,
@@ -11,25 +10,9 @@ import {
   createAccount,
 } from '@/lib/tradingAccounts'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
-
-// Auth-aware client (reads Supabase session cookies)
-const authSupabase = createAuthClient()
-
-// Test query on module load
-if (typeof window !== 'undefined') {
-  createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  ).from('trading_rules').select('count').then(({ data, error }) => {
-    console.log('Supabase connection test:', { data, error })
-    console.log('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-    console.log('Key prefix:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0, 20))
-  })
-}
+// createBrowserClient — session-aware, works with RLS
+const supabase = createAuthClient()
+const authSupabase = supabase
 
 const SELECTED_ACCOUNT_COOKIE = 'selected_account_id'
 

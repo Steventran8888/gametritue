@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '../../lib/supabase'
 import {
   ACCOUNT_TYPE_PRESETS,
   type TradingAccount,
@@ -11,10 +11,8 @@ import {
   deleteAccount,
 } from '@/lib/tradingAccounts'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
+// createBrowserClient — session-aware, works with RLS
+const supabase = createClient()
 
 // ── Types ─────────────────────────────────────────────────────────
 

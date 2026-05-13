@@ -149,6 +149,13 @@ function ViolationBadge({
 
 const CATEGORY_ORDER = ['Risk', 'Timing', 'Behavior', 'Drawdown']
 
+interface DropdownPos {
+  anchorTop: number
+  anchorBottom: number
+  left: number
+  openUpward: boolean
+}
+
 function AddViolationDropdown({
   rules,
   pos,
@@ -156,7 +163,7 @@ function AddViolationDropdown({
   onClose,
 }: {
   rules: RuleOption[]
-  pos: { top: number; left: number }
+  pos: DropdownPos
   onSelect: (ruleId: string) => void
   onClose: () => void
 }) {
@@ -175,7 +182,10 @@ function AddViolationDropdown({
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
         className="fixed z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-52 max-h-72 overflow-y-auto"
-        style={{ top: pos.top, left: pos.left }}
+        style={pos.openUpward
+          ? { top: pos.anchorTop - 4, left: pos.left, transform: 'translateY(-100%)' }
+          : { top: pos.anchorBottom + 4, left: pos.left }
+        }
       >
         {sortedCats.map(cat => (
           <div key={cat}>
@@ -499,6 +509,9 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
   const [showAddModal, setShowAddModal] = useState(false)
 
   // Upload
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [uploadToast, setUploadToast] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<UploadResult | null>(null)
@@ -507,6 +520,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
   // Stats strip
   const [accountStats, setAccountStats] = useState<AccountStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(false)
+  const [showViolationsBreakdown, setShowViolationsBreakdown] = useState(false)
 
   // Re-scan
   const [isRescanning, setIsRescanning] = useState(false)
@@ -524,14 +538,14 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
   // Dropdown anchor: ticket + viewport position of the + button
   const [addingForTicket, setAddingForTicket] = useState<string | null>(null)
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
+  const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
   const selectedAccount = accounts.find(a => a.id === selectedId) ?? null
 
-  // Prevent browser navigation on file drop outside drop zone
+  // Prevent browser navigation when dragging files anywhere on page
   useEffect(() => {
-    const prevent = (e: DragEvent) => { e.preventDefault(); e.stopPropagation() }
+    const prevent = (e: DragEvent) => { e.preventDefault() }
     window.addEventListener('dragover', prevent)
     window.addEventListener('drop', prevent)
     return () => {
@@ -709,8 +723,17 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
         setError(data.error ?? 'Upload failed')
       } else {
         setResult(data as UploadResult)
+        setUploadSuccess(true)
         await loadTradeHistory(selectedId)
-        void doRescan(selectedId) // updates violations + stats in background
+        void doRescan(selectedId)
+        // Close modal after 2s, then show toast
+        setTimeout(() => {
+          setShowUploadModal(false)
+          setUploadSuccess(false)
+          const n = (data as UploadResult).tradesAdded
+          setUploadToast(`✓ ${n} trade${n !== 1 ? 's' : ''} synced`)
+          setTimeout(() => setUploadToast(null), 3000)
+        }, 2000)
       }
     } catch {
       setError('Network error — please try again')
@@ -718,8 +741,6 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
       setUploading(false)
     }
   }
-
-  const noAccount = !selectedId
 
   return (
     <main className="min-h-screen bg-gray-950 px-4 py-8">
@@ -731,7 +752,14 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
             <h1 className="text-white text-2xl font-bold">Trading Journal</h1>
             <p className="text-gray-500 text-sm mt-0.5">Upload FTMO CSV → Sheets · Notion · Supabase</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { if (selectedId) { setError(''); setShowUploadModal(true) } }}
+              disabled={!selectedId}
+              className="bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm px-4 py-1.5 rounded-full font-medium transition"
+            >
+              ↑ Upload CSV
+            </button>
             <a href="/trading-journal/settings" className="text-gray-400 hover:text-white text-sm transition">⚙ Settings</a>
             <button onClick={onLogout} className="text-gray-500 hover:text-gray-300 text-sm transition">Logout</button>
           </div>
@@ -790,104 +818,84 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
           {/* Account stats strip */}
           {selectedAccount && (
-            <div className="flex flex-wrap items-center gap-0 pt-3 border-t border-gray-800 text-xs divide-x divide-gray-800">
-              {statsLoading ? (
-                <span className="text-gray-600 px-3">Loading stats…</span>
-              ) : accountStats ? (
-                <>
-                  <span className="text-gray-400 px-3">
-                    Trades: <span className="text-gray-200 font-medium">{accountStats.total_trades}</span>
-                  </span>
-                  <span className="text-gray-400 px-3">
-                    Win Rate: <span className="text-gray-200 font-medium">
-                      {accountStats.total_trades > 0
-                        ? ((accountStats.win_trades / accountStats.total_trades) * 100).toFixed(1)
-                        : '0.0'}%
+            <div className="relative pt-3 border-t border-gray-800">
+              <div className="flex flex-wrap items-center gap-0 text-xs divide-x divide-gray-800">
+                {statsLoading ? (
+                  <span className="text-gray-600 px-3">Loading stats…</span>
+                ) : accountStats ? (
+                  <>
+                    <span className="text-gray-400 px-3">
+                      Trades: <span className="text-gray-200 font-medium">{accountStats.total_trades}</span>
                     </span>
-                  </span>
-                  <span className="text-gray-400 px-3">
-                    P&amp;L: <span className={`font-semibold ${accountStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {accountStats.total_pnl >= 0 ? '+' : ''}${accountStats.total_pnl.toFixed(2)}
+                    <span className="text-gray-400 px-3">
+                      Win Rate: <span className="text-gray-200 font-medium">
+                        {accountStats.total_trades > 0
+                          ? ((accountStats.win_trades / accountStats.total_trades) * 100).toFixed(1)
+                          : '0.0'}%
+                      </span>
                     </span>
-                  </span>
-                  <span className={`px-3 ${accountStats.violations > 0 ? 'text-yellow-500' : 'text-gray-400'}`}>
-                    ⚠ Violations: <span className="font-medium">{accountStats.violations}</span>
-                  </span>
-                  <span className="px-3">
-                    <button
-                      onClick={handleRescan}
-                      disabled={isRescanning}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
-                        scanDone
-                          ? 'bg-green-800 text-green-300'
-                          : 'bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-70 disabled:cursor-not-allowed'
-                      }`}
-                    >
-                      <span className={isRescanning ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
-                      {scanDone ? '✓ Scan complete' : isRescanning ? 'Scanning…' : 'Re-scan rules'}
-                    </button>
-                  </span>
-                </>
-              ) : null}
+                    <span className="text-gray-400 px-3">
+                      P&amp;L: <span className={`font-semibold ${accountStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {accountStats.total_pnl >= 0 ? '+' : ''}${accountStats.total_pnl.toFixed(2)}
+                      </span>
+                    </span>
+                    <span className="px-3">
+                      <button
+                        onClick={() => setShowViolationsBreakdown(v => !v)}
+                        className={`flex items-center gap-1 ${accountStats.violations > 0 ? 'text-yellow-500' : 'text-gray-400'} hover:opacity-80 transition`}
+                      >
+                        ⚠ Violations: <span className="font-medium">{accountStats.violations}</span>
+                        <span className="ml-1 text-gray-600">{showViolationsBreakdown ? '▴' : '▾'}</span>
+                      </button>
+                    </span>
+                    <span className="px-3">
+                      <button
+                        onClick={handleRescan}
+                        disabled={isRescanning}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
+                          scanDone
+                            ? 'bg-green-800 text-green-300'
+                            : 'bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-70 disabled:cursor-not-allowed'
+                        }`}
+                      >
+                        <span className={isRescanning ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
+                        {scanDone ? '✓ Scan complete' : isRescanning ? 'Scanning…' : 'Re-scan rules'}
+                      </button>
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              {/* Violations breakdown panel */}
+              {showViolationsBreakdown && violations.length > 0 && (() => {
+                const grouped: Record<string, { name: string; severity: string; count: number }> = {}
+                for (const v of violations) {
+                  const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
+                  const key = rule?.code || v.rule_id
+                  if (!grouped[key]) grouped[key] = { name: rule?.name || key, severity: rule?.severity || 'warning', count: 0 }
+                  grouped[key].count++
+                }
+                const items = Object.entries(grouped).sort((a, b) => b[1].count - a[1].count)
+                return (
+                  <div className="absolute left-0 top-full mt-1 z-30 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl min-w-56 py-1">
+                    {items.map(([code, { name, severity, count }]) => (
+                      <div key={code} className="flex items-center justify-between px-4 py-2 text-xs hover:bg-gray-700/50">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${severity === 'critical' ? 'bg-red-500' : 'bg-yellow-500'}`} />
+                          <span className="text-gray-200">{name}</span>
+                        </div>
+                        <span className="text-gray-400 font-medium ml-4">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>
 
-        {/* Drop zone */}
-        <div
-          role="button"
-          tabIndex={noAccount ? -1 : 0}
-          onKeyDown={e => !noAccount && e.key === 'Enter' && fileRef.current?.click()}
-          onDragEnter={e => { e.preventDefault(); e.stopPropagation(); if (!noAccount) setDragging(true) }}
-          onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (!noAccount) setDragging(true) }}
-          onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragging(false) }}
-          onDrop={e => {
-            e.preventDefault(); e.stopPropagation(); setDragging(false)
-            if (!noAccount) { const f = e.dataTransfer.files[0]; if (f) handleUpload(f) }
-          }}
-          onClick={() => !noAccount && !uploading && fileRef.current?.click()}
-          className={`rounded-2xl border-2 border-dashed p-12 text-center transition select-none ${
-            noAccount
-              ? 'border-gray-800 bg-gray-900/50 opacity-50 cursor-not-allowed'
-              : dragging
-              ? 'border-indigo-500 bg-indigo-500/10 cursor-pointer'
-              : uploading
-              ? 'border-gray-700 bg-gray-900 cursor-not-allowed'
-              : 'border-gray-700 bg-gray-900 hover:border-gray-600 hover:bg-gray-800/50 cursor-pointer'
-          }`}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = '' }}
-          />
-          {noAccount ? (
-            <p className="text-gray-500 text-sm">Select an account above to upload</p>
-          ) : uploading ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-indigo-400 text-sm font-medium">Uploading and processing…</p>
-            </div>
-          ) : (
-            <>
-              <div className="text-3xl mb-3">📂</div>
-              <p className="text-gray-200 font-semibold">Drop FTMO CSV here</p>
-              <p className="text-gray-500 text-sm mt-1">or click to browse</p>
-            </>
-          )}
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-950 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Upload result summary + violations */}
-        {result && <ResultPanel result={result} />}
+        {/* Upload result summary + violations (shown after modal closes) */}
+        {result && !showUploadModal && <ResultPanel result={result} />}
 
         {/* Trade History table */}
         {selectedAccount && (
@@ -953,8 +961,9 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
                                     setAddingForTicket(null)
                                     setDropdownPos(null)
                                   } else {
+                                    const openUpward = window.innerHeight - rect.bottom < 300
                                     setAddingForTicket(t.ticket)
-                                    setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+                                    setDropdownPos({ anchorTop: rect.top, anchorBottom: rect.bottom, left: rect.left, openUpward })
                                   }
                                 }}
                                 className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white text-xs flex items-center justify-center transition flex-shrink-0"
@@ -988,6 +997,77 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
           />
         )
       })()}
+
+      {/* Upload modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => !uploading && setShowUploadModal(false)}>
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-white font-bold text-base">Upload FTMO CSV</h3>
+              {!uploading && (
+                <button onClick={() => setShowUploadModal(false)} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+              )}
+            </div>
+
+            <div
+              onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+              onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+              onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragging(false) }}
+              onDrop={e => {
+                e.preventDefault(); e.stopPropagation(); setDragging(false)
+                const f = e.dataTransfer.files[0]; if (f) handleUpload(f)
+              }}
+              onClick={() => !uploading && !uploadSuccess && fileRef.current?.click()}
+              className={`rounded-xl border-2 border-dashed p-10 text-center transition select-none cursor-pointer ${
+                uploadSuccess
+                  ? 'border-green-700 bg-green-900/20'
+                  : dragging
+                  ? 'border-violet-500 bg-violet-500/10'
+                  : uploading
+                  ? 'border-gray-700 bg-gray-800 cursor-not-allowed'
+                  : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+              }`}
+            >
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = '' }}
+              />
+              {uploadSuccess ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="text-3xl">✓</div>
+                  <p className="text-green-400 font-semibold">{result?.tradesAdded} trades synced</p>
+                  <p className="text-gray-500 text-sm">Closing…</p>
+                </div>
+              ) : uploading ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-violet-400 text-sm font-medium">Uploading and processing…</p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-3xl mb-3">📂</div>
+                  <p className="text-gray-200 font-semibold">Drop FTMO CSV here</p>
+                  <p className="text-gray-500 text-sm mt-1">or click to browse</p>
+                </>
+              )}
+            </div>
+
+            {error && (
+              <p className="mt-3 text-red-400 text-xs">{error}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Success toast */}
+      {uploadToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-800 text-green-200 text-sm font-medium px-5 py-2.5 rounded-full shadow-2xl">
+          {uploadToast}
+        </div>
+      )}
 
       {showAddModal && (
         <AddAccountModal

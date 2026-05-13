@@ -20,22 +20,90 @@ interface UploadResult {
   trades: TradeRow[]
 }
 
-export default function TradingJournalPage() {
-  const [authenticated, setAuthenticated] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return document.cookie.split(';').some(c => c.trim().startsWith('journal_auth=true'))
-  })
+// ── Shared helper ────────────────────────────────────────────────
+
+function Stat({ value, label, color }: { value: number; label: string; color: string }) {
+  return (
+    <div>
+      <p className={`text-3xl font-bold ${color}`}>{value}</p>
+      <p className="text-gray-400 text-sm mt-0.5">{label}</p>
+    </div>
+  )
+}
+
+// ── LoginGate ────────────────────────────────────────────────────
+
+function LoginGate({ onSuccess }: { onSuccess: (pw: string) => void }) {
   const [password, setPassword] = useState('')
-  const [pwError, setPwError] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!password.trim()) { setError('Enter a password'); return }
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/trading-journal/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      if (res.ok) {
+        document.cookie = `journal_auth=true; path=/; max-age=86400; SameSite=Strict`
+        onSuccess(password)
+      } else {
+        setError('Sai mật khẩu')
+      }
+    } catch {
+      setError('Network error — please try again')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-xl">
+        <div className="mb-6">
+          <h1 className="text-white text-xl font-bold">Trading Journal</h1>
+          <p className="text-gray-400 text-sm mt-1">Private — enter password to continue</p>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+            autoFocus
+            className="bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition"
+          />
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-60 text-white rounded-xl py-3 text-sm font-semibold transition"
+          >
+            {loading ? 'Checking…' : 'Enter'}
+          </button>
+        </form>
+      </div>
+    </main>
+  )
+}
+
+// ── Dashboard ────────────────────────────────────────────────────
+
+function Dashboard({ password, onLogout }: { password: string; onLogout: () => void }) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<UploadResult | null>(null)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Prevent browser from navigating away when a file is dropped outside the drop zone
+  // Prevent browser from navigating when a file is dropped outside the drop zone
   useEffect(() => {
-    const prevent = (e: DragEvent) => e.preventDefault()
+    const prevent = (e: DragEvent) => { e.preventDefault(); e.stopPropagation() }
     window.addEventListener('dragover', prevent)
     window.addEventListener('drop', prevent)
     return () => {
@@ -43,22 +111,6 @@ export default function TradingJournalPage() {
       window.removeEventListener('drop', prevent)
     }
   }, [])
-
-  function handleLogin(e: React.FormEvent) {
-    e.preventDefault()
-    if (!password.trim()) { setPwError('Enter a password'); return }
-    document.cookie = `journal_auth=true; path=/; max-age=86400; SameSite=Strict`
-    setPwError('')
-    setAuthenticated(true)
-  }
-
-  function handleLogout() {
-    document.cookie = `journal_auth=; path=/; max-age=0`
-    setAuthenticated(false)
-    setPassword('')
-    setResult(null)
-    setError('')
-  }
 
   async function handleUpload(file: File) {
     if (!file.name.endsWith('.csv')) {
@@ -72,18 +124,15 @@ export default function TradingJournalPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    const pw = password
-
     try {
       const res = await fetch('/api/trading-journal/upload', {
         method: 'POST',
-        headers: { 'x-journal-password': pw },
+        headers: { 'x-journal-password': password },
         body: formData,
       })
 
       if (res.status === 401) {
-        handleLogout()
-        setPwError('Session expired — please log in again')
+        onLogout()
         return
       }
 
@@ -100,38 +149,6 @@ export default function TradingJournalPage() {
     }
   }
 
-  // ── Password screen ──────────────────────────────────────────────
-  if (!authenticated) {
-    return (
-      <main className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-xl">
-          <div className="mb-6">
-            <h1 className="text-white text-xl font-bold">Trading Journal</h1>
-            <p className="text-gray-400 text-sm mt-1">Private — enter password to continue</p>
-          </div>
-          <form onSubmit={handleLogin} className="flex flex-col gap-3">
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Password"
-              autoFocus
-              className="bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition"
-            />
-            {pwError && <p className="text-red-400 text-xs">{pwError}</p>}
-            <button
-              type="submit"
-              className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-xl py-3 text-sm font-semibold transition"
-            >
-              Enter
-            </button>
-          </form>
-        </div>
-      </main>
-    )
-  }
-
-  // ── Dashboard ────────────────────────────────────────────────────
   return (
     <main className="min-h-screen bg-gray-950 px-4 py-10">
       <div className="max-w-5xl mx-auto">
@@ -145,7 +162,7 @@ export default function TradingJournalPage() {
             </p>
           </div>
           <button
-            onClick={handleLogout}
+            onClick={onLogout}
             className="text-gray-500 hover:text-gray-300 text-sm transition"
           >
             Logout
@@ -274,11 +291,26 @@ export default function TradingJournalPage() {
   )
 }
 
-function Stat({ value, label, color }: { value: number; label: string; color: string }) {
-  return (
-    <div>
-      <p className={`text-3xl font-bold ${color}`}>{value}</p>
-      <p className="text-gray-400 text-sm mt-0.5">{label}</p>
-    </div>
-  )
+// ── Root ─────────────────────────────────────────────────────────
+
+export default function TradingJournalPage() {
+  const [authed, setAuthed] = useState(false)
+  const [checking, setChecking] = useState(true)
+  const [password, setPassword] = useState('')
+
+  useEffect(() => {
+    const ok = document.cookie.split(';').some(c => c.trim() === 'journal_auth=true')
+    setAuthed(ok)
+    setChecking(false)
+  }, [])
+
+  function handleLogout() {
+    document.cookie = `journal_auth=; path=/; max-age=0`
+    setAuthed(false)
+    setPassword('')
+  }
+
+  if (checking) return null
+  if (!authed) return <LoginGate onSuccess={pw => { setPassword(pw); setAuthed(true) }} />
+  return <Dashboard password={password} onLogout={handleLogout} />
 }

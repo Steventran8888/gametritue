@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getServerSupabase } from '@/lib/supabaseServer'
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get('x-journal-password')
@@ -17,10 +17,7 @@ export async function DELETE(
   }
 
   const { id } = await params
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+  const supabase = await getServerSupabase()
 
   const { error } = await supabase
     .from('rule_violations')

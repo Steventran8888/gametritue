@@ -21,6 +21,7 @@ export const ACCOUNT_TYPE_PRESETS: Record<string, {
 
 export type TradingAccount = {
   id: string
+  owner_id?: string
   broker: string
   account_code: string
   account_type: string | null
@@ -46,9 +47,12 @@ export async function getAccounts(): Promise<TradingAccount[]> {
 }
 
 export async function createAccount(input: AccountInput): Promise<TradingAccount> {
-  const { data, error } = await getClient()
+  const client = getClient()
+  const { data: { user } } = await client.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const { data, error } = await client
     .from('trading_accounts')
-    .insert(input)
+    .insert({ ...input, owner_id: user.id })
     .select()
     .single()
   if (error) throw new Error(error.message)

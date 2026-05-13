@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getServerSupabase } from '@/lib/supabaseServer'
 import { appendTrades } from '@/lib/googleSheets'
 import { createDailyPages } from '@/lib/notionJournal'
 import { runRuleEngine, saveViolations, type ParsedTrade } from '@/lib/ruleEngine'
@@ -136,10 +136,7 @@ export async function POST(req: NextRequest) {
     createDailyPages(trades),
   ])
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+  const supabase = await getServerSupabase()
 
   // Supabase: upsert trading_history
   const rows = trades.map(t => ({

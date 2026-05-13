@@ -1,11 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
-}
+import { getServerSupabase } from './supabaseServer'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -73,7 +66,7 @@ export async function runRuleEngine(
     firstTrade: trades[0] ? JSON.stringify(trades[0]) : 'none',
   })
 
-  const supabase = getSupabase()
+  const supabase = await getServerSupabase()
 
   // Fetch active auto rules
   const { data: rules, error } = await supabase
@@ -259,7 +252,7 @@ export async function saveViolations(
   accountId: string,
 ): Promise<number> {
   if (violations.length === 0) return 0
-  const supabase = getSupabase()
+  const supabase = await getServerSupabase()
   const rows = violations.map(v => ({
     account_id: accountId,
     ticket:    v.ticket,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getServerSupabase } from '@/lib/supabaseServer'
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get('x-journal-password')
@@ -23,10 +23,7 @@ export async function PATCH(
   if (body.params !== undefined)    update.params = body.params
   if (body.severity !== undefined)  update.severity = body.severity
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+  const supabase = await getServerSupabase()
 
   console.log(`PATCH trading_rules/${id}:`, update)
 

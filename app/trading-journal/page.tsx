@@ -15,6 +15,18 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 )
 
+// Test query on module load
+if (typeof window !== 'undefined') {
+  createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  ).from('trading_rules').select('count').then(({ data, error }) => {
+    console.log('Supabase connection test:', { data, error })
+    console.log('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+    console.log('Key prefix:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0, 20))
+  })
+}
+
 const SELECTED_ACCOUNT_COOKIE = 'selected_account_id'
 
 function readSelectedAccountCookie(): string | null {
@@ -537,6 +549,9 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
   // Load all active trading rules for the add-violation dropdown (once)
   useEffect(() => {
+    console.log('fetchRules called')
+    console.log('supabase URL available:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+    console.log('supabase KEY available:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
     supabase
       .from('trading_rules')
       .select('id, rule_code, name, category, severity')

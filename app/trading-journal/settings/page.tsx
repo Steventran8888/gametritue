@@ -138,6 +138,7 @@ function EditAccountModal({
 function ParamEditor({ rule, onUpdated }: { rule: Rule; onUpdated: (r: Rule) => void }) {
   const [localParams, setLocalParams] = useState({ ...rule.params })
   const [saving, setSaving] = useState(false)
+  const [savedKey, setSavedKey] = useState<string | null>(null)
 
   async function save(key: string, value: string) {
     const num = parseFloat(value)
@@ -149,11 +150,13 @@ function ParamEditor({ rule, onUpdated }: { rule: Rule; onUpdated: (r: Rule) => 
       const res = await fetch(`/api/trading-journal/rules/${rule.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ params: newParams }),
+        body: JSON.stringify({ params: newParams, is_active: rule.is_active }),
       })
       if (res.ok) {
-        const updated = await res.json()
-        onUpdated(updated)
+        const data = await res.json()
+        onUpdated(data.rule ?? data)
+        setSavedKey(key)
+        setTimeout(() => setSavedKey(null), 2000)
       }
     } finally {
       setSaving(false)
@@ -174,6 +177,7 @@ function ParamEditor({ rule, onUpdated }: { rule: Rule; onUpdated: (r: Rule) => 
             onBlur={e => save(key, e.target.value)}
             className="w-16 bg-gray-800 border border-gray-700 text-white rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-indigo-500"
           />
+          {savedKey === key && <span className="text-green-400 text-xs">✓</span>}
         </label>
       ))}
       {saving && <span className="text-xs text-gray-600">saving…</span>}
@@ -246,7 +250,9 @@ export default function SettingsPage() {
       body: JSON.stringify({ is_active: newActive }),
     })
     if (res.ok) {
-      setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: newActive } : r))
+      const data = await res.json()
+      const updated: Rule = data.rule ?? data
+      setRules(prev => prev.map(r => r.id === updated.id ? updated : r))
     }
   }
 

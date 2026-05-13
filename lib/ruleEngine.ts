@@ -66,6 +66,13 @@ export async function runRuleEngine(
   accountId: string,
   accountBalance: number,
 ): Promise<ViolationResult[]> {
+  console.log('Rule engine input:', {
+    tradesCount: trades.length,
+    accountId,
+    accountBalance,
+    firstTrade: trades[0] ? JSON.stringify(trades[0]) : 'none',
+  })
+
   const supabase = getSupabase()
 
   // Fetch active auto rules
@@ -74,6 +81,8 @@ export async function runRuleEngine(
     .select('*')
     .eq('detect_type', 'auto')
     .eq('is_active', true)
+
+  console.log('Active auto rules:', rules?.map(r => r.rule_code) ?? [], 'error:', error?.message ?? null)
 
   if (error || !rules || rules.length === 0) return []
 
@@ -145,8 +154,20 @@ export async function runRuleEngine(
     const t = sorted[i]
     const prev = i > 0 ? sorted[i - 1] : null
 
+    console.log('Checking trade:', {
+      ticket: t.ticket,
+      rrRatio: t.rrRatio,
+      session: t.session,
+      sl: t.sl,
+      durationMin: t.durationMin,
+      volume: t.volume,
+      openPrice: t.openPrice,
+      profit: t.profit,
+    })
+
     // RR_LOW
     const r_rr_low = ruleMap['RR_LOW']
+    console.log('RR_LOW check:', { rrRatio: t.rrRatio, minRr: r_rr_low?.params.min_rr, wouldFlag: t.rrRatio < (r_rr_low?.params.min_rr ?? 2) && t.rrRatio > 0 })
     if (r_rr_low && t.rrRatio > 0 && t.rrRatio < (r_rr_low.params.min_rr ?? 2)) {
       addViolation(t.ticket, r_rr_low, `RR = ${t.rrRatio.toFixed(2)}, below minimum ${r_rr_low.params.min_rr}`)
     }
@@ -180,6 +201,7 @@ export async function runRuleEngine(
 
     // SESSION_US
     const r_session = ruleMap['SESSION_US']
+    console.log('SESSION_US check:', { session: t.session, wouldFlag: t.session === 'US' })
     if (r_session && t.session === 'US') {
       addViolation(t.ticket, r_session, `Trade opened during US session`)
     }

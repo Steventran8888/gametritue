@@ -8,7 +8,7 @@ function checkAuth(req: NextRequest): boolean {
   return cookie === 'true'
 }
 
-export async function PATCH(
+export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -17,26 +17,16 @@ export async function PATCH(
   }
 
   const { id } = await params
-  const body = await req.json()
-  const update: Record<string, unknown> = {}
-  if (body.is_active !== undefined) update.is_active = body.is_active
-  if (body.params !== undefined)    update.params = body.params
-  if (body.severity !== undefined)  update.severity = body.severity
-
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   )
 
-  console.log(`PATCH trading_rules/${id}:`, update)
-
-  const { data, error } = await supabase
-    .from('trading_rules')
-    .update(update)
+  const { error } = await supabase
+    .from('rule_violations')
+    .delete()
     .eq('id', id)
-    .select()
-    .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true, rule: data })
+  return NextResponse.json({ success: true })
 }

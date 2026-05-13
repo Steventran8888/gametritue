@@ -28,17 +28,40 @@ function writeSelectedAccountCookie(id: string) {
   document.cookie = `${SELECTED_ACCOUNT_COOKIE}=${id}; path=/trading-journal; max-age=86400; SameSite=Strict`
 }
 
+function fmtTimestamp(iso: string): string {
+  try { return new Date(iso).toISOString().replace('T', ' ').substring(0, 16) } catch { return iso }
+}
+
 // ── Types ─────────────────────────────────────────────────────────
 
-interface TradeRow {
+interface TradeHistoryRow {
   ticket: string
   type: string
   symbol: string
-  openTime: string
-  closeTime: string
+  open_time: string
+  close_time: string
   pips: number
   profit: number
   commission: number
+}
+
+interface ViolationWithRule {
+  id: string
+  ticket: string
+  rule_id: string
+  auto_note: string
+  rule_code: string
+  rule_name: string
+  category: string
+  severity: string
+}
+
+interface RuleOption {
+  id: string
+  rule_code: string
+  name: string
+  category: string
+  severity: string
 }
 
 interface ViolationRow {
@@ -56,7 +79,6 @@ interface UploadResult {
   violations_found: number
   violations_by_severity: { critical: number; warning: number }
   violations: ViolationRow[]
-  trades: TradeRow[]
 }
 
 interface AccountStats {
@@ -76,6 +98,93 @@ async function fetchAccountStats(accountId: string): Promise<AccountStats> {
   const wins  = trades?.filter(t => (t.profit ?? 0) > 0).length ?? 0
   const pnl   = trades?.reduce((s, t) => s + (t.profit ?? 0) + (t.commission ?? 0), 0) ?? 0
   return { total_trades: total, win_trades: wins, total_pnl: pnl, violations: vCount ?? 0 }
+}
+
+// ── ViolationBadge ────────────────────────────────────────────────
+
+function ViolationBadge({
+  violation,
+  onDelete,
+}: {
+  violation: ViolationWithRule
+  onDelete: (id: string) => void
+}) {
+  const isCritical = violation.severity === 'critical'
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs flex items-center gap-1 whitespace-nowrap ${
+      isCritical
+        ? 'bg-red-900 text-red-300 border border-red-700'
+        : 'bg-yellow-900 text-yellow-300 border border-yellow-700'
+    }`}>
+      {violation.rule_name}
+      <button
+        onClick={() => onDelete(violation.id)}
+        className="opacity-60 hover:opacity-100 cursor-pointer leading-none"
+        title={`Remove ${violation.rule_name}`}
+      >
+        ×
+      </button>
+    </span>
+  )
+}
+
+// ── AddViolationDropdown (portal-style, fixed position) ───────────
+
+const CATEGORY_ORDER = ['Risk', 'Timing', 'Behavior', 'Drawdown']
+
+function AddViolationDropdown({
+  rules,
+  pos,
+  onSelect,
+  onClose,
+}: {
+  rules: RuleOption[]
+  pos: { top: number; left: number }
+  onSelect: (ruleId: string) => void
+  onClose: () => void
+}) {
+  const byCategory: Record<string, RuleOption[]> = {}
+  for (const r of rules) {
+    if (!byCategory[r.category]) byCategory[r.category] = []
+    byCategory[r.category].push(r)
+  }
+  const sortedCats = [
+    ...CATEGORY_ORDER.filter(c => byCategory[c]),
+    ...Object.keys(byCategory).filter(c => !CATEGORY_ORDER.includes(c)),
+  ]
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-52 max-h-72 overflow-y-auto"
+        style={{ top: pos.top, left: pos.left }}
+      >
+        {sortedCats.map(cat => (
+          <div key={cat}>
+            <p className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-800">
+              {cat}
+            </p>
+            {(byCategory[cat] ?? []).map(rule => (
+              <button
+                key={rule.id}
+                onClick={() => onSelect(rule.id)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 transition text-left"
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  rule.severity === 'critical' ? 'bg-red-500' : 'bg-yellow-500'
+                }`} />
+                {rule.name}
+              </button>
+            ))}
+          </div>
+        ))}
+        {rules.length === 0 && (
+          <p className="px-3 py-4 text-xs text-gray-500 text-center">No rules available</p>
+        )}
+      </div>
+    </>
+  )
 }
 
 // ── LoginGate ────────────────────────────────────────────────────
@@ -233,137 +342,48 @@ function AddAccountModal({
   }
 
   const ddTypeLabel = ddType === 'trailing' ? 'Trailing' : ddType === 'static' ? 'Static' : 'None'
-
-  const inputClass = 'w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
-  const labelClass = 'text-xs text-gray-400 font-medium mb-1'
+  const ic = 'w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
+  const lc = 'text-xs text-gray-400 font-medium mb-1'
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h3 className="text-white font-bold text-base mb-5">Add Trading Account</h3>
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className={labelClass}>Broker *</p>
-              <input
-                list="broker-list"
-                value={broker}
-                onChange={e => setBroker(e.target.value)}
-                placeholder="e.g. FTMO"
-                className={inputClass}
-              />
-              <datalist id="broker-list">
-                {['FTMO', 'Exness', 'Other'].map(b => <option key={b} value={b} />)}
-              </datalist>
+              <p className={lc}>Broker *</p>
+              <input list="broker-list" value={broker} onChange={e => setBroker(e.target.value)} placeholder="e.g. FTMO" className={ic} />
+              <datalist id="broker-list">{['FTMO', 'Exness', 'Other'].map(b => <option key={b} value={b} />)}</datalist>
             </div>
             <div>
-              <p className={labelClass}>Account Code *</p>
-              <input
-                value={accountCode}
-                onChange={e => setAccountCode(e.target.value)}
-                placeholder="e.g. 123456"
-                className={inputClass}
-              />
+              <p className={lc}>Account Code *</p>
+              <input value={accountCode} onChange={e => setAccountCode(e.target.value)} placeholder="e.g. 123456" className={ic} />
             </div>
           </div>
-
           <div>
-            <p className={labelClass}>Account Type</p>
-            <select
-              value={accountType}
-              onChange={e => handleTypeChange(e.target.value)}
-              className={inputClass}
-            >
+            <p className={lc}>Account Type</p>
+            <select value={accountType} onChange={e => handleTypeChange(e.target.value)} className={ic}>
               {presetKeys.map(k => <option key={k} value={k}>{k}</option>)}
             </select>
           </div>
-
           <div>
-            <p className={labelClass}>Display Name (optional)</p>
-            <input
-              value={displayName}
-              onChange={e => setDisplayName(e.target.value)}
-              placeholder="e.g. My FTMO Account"
-              className={inputClass}
-            />
+            <p className={lc}>Display Name (optional)</p>
+            <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="e.g. My FTMO Account" className={ic} />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className={labelClass}>Currency</p>
-              <input
-                value={currency}
-                onChange={e => setCurrency(e.target.value)}
-                placeholder="USD"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <p className={labelClass}>Initial Balance</p>
-              <input
-                type="number"
-                value={initialBalance}
-                onChange={e => setInitialBalance(e.target.value)}
-                placeholder="e.g. 100000"
-                className={inputClass}
-              />
-            </div>
+            <div><p className={lc}>Currency</p><input value={currency} onChange={e => setCurrency(e.target.value)} placeholder="USD" className={ic} /></div>
+            <div><p className={lc}>Initial Balance</p><input type="number" value={initialBalance} onChange={e => setInitialBalance(e.target.value)} placeholder="e.g. 100000" className={ic} /></div>
           </div>
-
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <p className={labelClass}>Daily DD %</p>
-              <input
-                type="number"
-                step="0.1"
-                value={dailyDdPct}
-                onChange={e => setDailyDdPct(e.target.value)}
-                placeholder="—"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <p className={labelClass}>Total DD %</p>
-              <input
-                type="number"
-                step="0.1"
-                value={totalDdPct}
-                onChange={e => setTotalDdPct(e.target.value)}
-                placeholder="—"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <p className={labelClass}>DD Type</p>
-              <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-400">
-                {ddTypeLabel}
-              </div>
-            </div>
+            <div><p className={lc}>Daily DD %</p><input type="number" step="0.1" value={dailyDdPct} onChange={e => setDailyDdPct(e.target.value)} placeholder="—" className={ic} /></div>
+            <div><p className={lc}>Total DD %</p><input type="number" step="0.1" value={totalDdPct} onChange={e => setTotalDdPct(e.target.value)} placeholder="—" className={ic} /></div>
+            <div><p className={lc}>DD Type</p><div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-400">{ddTypeLabel}</div></div>
           </div>
-
           {error && <p className="text-red-400 text-xs">{error}</p>}
-
           <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2 rounded-xl border border-gray-700 text-gray-400 text-sm font-semibold hover:border-gray-600 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl border border-gray-700 text-gray-400 text-sm font-semibold hover:border-gray-600 transition">Cancel</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition">{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </form>
       </div>
@@ -380,7 +400,6 @@ function ResultPanel({ result }: { result: UploadResult }) {
   const nCritical = result.violations_by_severity?.critical ?? 0
   const nWarning  = result.violations_by_severity?.warning  ?? 0
 
-  // Fetch human-readable rule names when violations exist
   useEffect(() => {
     if (!result.violations_found) return
     getSupa()
@@ -396,7 +415,6 @@ function ResultPanel({ result }: { result: UploadResult }) {
 
   return (
     <div className="space-y-2">
-      {/* Sync line */}
       <p className="text-sm text-gray-400">
         <span className="text-green-400 font-semibold">✓ {result.tradesAdded} trades</span>
         {' → Sheets · Notion · Supabase '}
@@ -405,7 +423,6 @@ function ResultPanel({ result }: { result: UploadResult }) {
         <span className="text-gray-500">{result.totalParsed - result.tradesAdded} duplicates skipped</span>
       </p>
 
-      {/* Violations */}
       {(result.violations_found ?? 0) === 0 ? (
         <p className="text-xs text-green-600">✓ No rule violations detected</p>
       ) : (
@@ -417,11 +434,10 @@ function ResultPanel({ result }: { result: UploadResult }) {
             <span className="text-sm font-semibold text-yellow-400">⚠ Rule Violations ({result.violations_found})</span>
             <div className="flex items-center gap-2">
               {nCritical > 0 && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-950 text-red-400">Critical: {nCritical}</span>}
-              {nWarning > 0  && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-950 text-yellow-400">Warning: {nWarning}</span>}
+              {nWarning  > 0 && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-950 text-yellow-400">Warning: {nWarning}</span>}
               <span className="text-gray-600 text-xs">{showViolations ? '▲' : '▼'}</span>
             </div>
           </button>
-
           {showViolations && (
             <div className="border-t border-gray-800 overflow-x-auto">
               <table className="w-full text-xs">
@@ -459,18 +475,41 @@ function ResultPanel({ result }: { result: UploadResult }) {
 // ── Dashboard ────────────────────────────────────────────────────
 
 function Dashboard({ password, onLogout }: { password: string; onLogout: () => void }) {
+  // Account
   const [accounts, setAccounts] = useState<TradingAccount[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loadingAccounts, setLoadingAccounts] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+
+  // Upload
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<UploadResult | null>(null)
   const [error, setError] = useState('')
+
+  // Stats strip
   const [accountStats, setAccountStats] = useState<AccountStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
 
+  // Re-scan
+  const [isRescanning, setIsRescanning] = useState(false)
+  const [scanDone, setScanDone] = useState(false)
+
+  // Trade history
+  const [tradeHistory, setTradeHistory] = useState<TradeHistoryRow[]>([])
+  const [tradeHistoryLoading, setTradeHistoryLoading] = useState(false)
+
+  // Violations (joined with rule info)
+  const [violations, setViolations] = useState<ViolationWithRule[]>([])
+
+  // All rules for add-violation dropdown
+  const [allRules, setAllRules] = useState<RuleOption[]>([])
+
+  // Dropdown anchor: ticket + viewport position of the + button
+  const [addingForTicket, setAddingForTicket] = useState<string | null>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
+
+  const fileRef = useRef<HTMLInputElement>(null)
   const selectedAccount = accounts.find(a => a.id === selectedId) ?? null
 
   // Prevent browser navigation on file drop outside drop zone
@@ -494,19 +533,120 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
         const match = cookieId ? accs.find(a => a.id === cookieId) : null
         setSelectedId(match ? match.id : accs[0].id)
       })
-      .catch(() => {/* non-fatal */})
+      .catch(() => {})
       .finally(() => setLoadingAccounts(false))
   }, [])
 
-  // Fetch account stats whenever selected account changes
+  // Load all trading rules for the add-violation dropdown (once)
   useEffect(() => {
-    if (!selectedAccount) { setAccountStats(null); return }
+    getSupa()
+      .from('trading_rules')
+      .select('id, rule_code, name, category, severity')
+      .order('category')
+      .then(({ data }) => { if (data) setAllRules(data as RuleOption[]) })
+  }, [])
+
+  // ── Data loaders ─────────────────────────────────────────────────
+
+  async function loadTradeHistory(accountId: string) {
+    console.log('Fetching trades for account:', accountId)
+    setTradeHistoryLoading(true)
+    try {
+      const { data, error } = await getSupa()
+        .from('trading_history')
+        .select('ticket, type, symbol, open_time, close_time, pips, profit, commission')
+        .eq('account_id', accountId)
+        .order('open_time', { ascending: false })
+      if (error) console.error('fetchTrades error:', error)
+      console.log('Trades fetched:', data?.length, data?.[0])
+      setTradeHistory((data as TradeHistoryRow[]) ?? [])
+    } finally {
+      setTradeHistoryLoading(false)
+    }
+  }
+
+  async function loadViolations(accountId: string) {
+    const res = await fetch(`/api/trading-journal/violations?account_id=${accountId}`)
+    if (res.ok) setViolations((await res.json()) as ViolationWithRule[])
+  }
+
+  // Reload all data when selected account changes
+  useEffect(() => {
+    if (!selectedAccount) {
+      setAccountStats(null)
+      setTradeHistory([])
+      setViolations([])
+      return
+    }
+    const id = selectedAccount.id
     setStatsLoading(true)
-    fetchAccountStats(selectedAccount.id)
+    fetchAccountStats(id)
       .then(setAccountStats)
       .catch(() => setAccountStats(null))
       .finally(() => setStatsLoading(false))
+    void loadTradeHistory(id)
+    void loadViolations(id)
   }, [selectedAccount?.id])
+
+  // ── Re-scan ───────────────────────────────────────────────────────
+
+  async function doRescan(accountId: string) {
+    setIsRescanning(true)
+    try {
+      await fetch('/api/trading-journal/rescan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-journal-password': password },
+        body: JSON.stringify({ account_id: accountId }),
+      })
+      await Promise.all([
+        loadViolations(accountId),
+        fetchAccountStats(accountId).then(setAccountStats).catch(() => {}),
+      ])
+    } catch {
+      // non-fatal
+    } finally {
+      setIsRescanning(false)
+    }
+  }
+
+  async function handleRescan() {
+    if (!selectedId) return
+    await doRescan(selectedId)
+    setScanDone(true)
+    setTimeout(() => setScanDone(false), 2000)
+  }
+
+  // ── Violation CRUD ────────────────────────────────────────────────
+
+  async function handleAddViolation(ticket: string, ruleId: string) {
+    if (!selectedId) return
+    setAddingForTicket(null)
+    setDropdownPos(null)
+    const res = await fetch('/api/trading-journal/violations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_id: selectedId, ticket, rule_id: ruleId }),
+    })
+    if (res.ok) {
+      const v = await res.json() as ViolationWithRule
+      setViolations(prev => {
+        // Replace if duplicate ticket+rule_id (upsert may return same record)
+        const exists = prev.some(x => x.ticket === v.ticket && x.rule_id === v.rule_id)
+        return exists ? prev.map(x => (x.ticket === v.ticket && x.rule_id === v.rule_id ? v : x)) : [...prev, v]
+      })
+      fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})
+    }
+  }
+
+  async function handleDeleteViolation(violationId: string) {
+    const res = await fetch(`/api/trading-journal/violations/${violationId}`, { method: 'DELETE' })
+    if (res.ok) {
+      setViolations(prev => prev.filter(v => v.id !== violationId))
+      if (selectedId) fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})
+    }
+  }
+
+  // ── Upload ────────────────────────────────────────────────────────
 
   async function handleUpload(file: File) {
     if (!selectedId) return
@@ -529,8 +669,8 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
         setError(data.error ?? 'Upload failed')
       } else {
         setResult(data as UploadResult)
-        // Refetch stats to reflect new trades/violations
-        if (selectedId) fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})
+        await loadTradeHistory(selectedId)
+        void doRescan(selectedId) // updates violations + stats in background
       }
     } catch {
       setError('Network error — please try again')
@@ -615,16 +755,38 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
                 <span className="text-gray-600 px-3">Loading stats…</span>
               ) : accountStats ? (
                 <>
-                  <span className="text-gray-400 px-3">Trades: <span className="text-gray-200 font-medium">{accountStats.total_trades}</span></span>
-                  <span className="text-gray-400 px-3">Win Rate: <span className="text-gray-200 font-medium">
-                    {accountStats.total_trades > 0 ? ((accountStats.win_trades / accountStats.total_trades) * 100).toFixed(1) : '0.0'}%
-                  </span></span>
-                  <span className="text-gray-400 px-3">P&amp;L: <span className={`font-semibold ${accountStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {accountStats.total_pnl >= 0 ? '+' : ''}${accountStats.total_pnl.toFixed(2)}
-                  </span></span>
-                  {accountStats.violations > 0 && (
-                    <span className="text-yellow-500 px-3">⚠ Violations: <span className="font-medium">{accountStats.violations}</span></span>
-                  )}
+                  <span className="text-gray-400 px-3">
+                    Trades: <span className="text-gray-200 font-medium">{accountStats.total_trades}</span>
+                  </span>
+                  <span className="text-gray-400 px-3">
+                    Win Rate: <span className="text-gray-200 font-medium">
+                      {accountStats.total_trades > 0
+                        ? ((accountStats.win_trades / accountStats.total_trades) * 100).toFixed(1)
+                        : '0.0'}%
+                    </span>
+                  </span>
+                  <span className="text-gray-400 px-3">
+                    P&amp;L: <span className={`font-semibold ${accountStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {accountStats.total_pnl >= 0 ? '+' : ''}${accountStats.total_pnl.toFixed(2)}
+                    </span>
+                  </span>
+                  <span className={`px-3 ${accountStats.violations > 0 ? 'text-yellow-500' : 'text-gray-400'}`}>
+                    ⚠ Violations: <span className="font-medium">{accountStats.violations}</span>
+                  </span>
+                  <span className="px-3">
+                    <button
+                      onClick={handleRescan}
+                      disabled={isRescanning}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
+                        scanDone
+                          ? 'bg-green-800 text-green-300'
+                          : 'bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-70 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      <span className={isRescanning ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
+                      {scanDone ? '✓ Scan complete' : isRescanning ? 'Scanning…' : 'Re-scan rules'}
+                    </button>
+                  </span>
                 </>
               ) : null}
             </div>
@@ -684,56 +846,104 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
           </div>
         )}
 
-        {/* Compact result summary + violations */}
+        {/* Upload result summary + violations */}
         {result && <ResultPanel result={result} />}
 
-        {/* Trade preview table */}
-        {result && result.trades.length > 0 && (
+        {/* Trade History table */}
+        {selectedAccount && (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="text-white font-semibold">Parsed trades</h2>
-              <span className="text-gray-500 text-sm">{result.trades.length} rows</span>
+              <h2 className="text-white font-semibold">Trade History</h2>
+              <span className="text-gray-500 text-sm">
+                {tradeHistoryLoading ? 'Loading…' : `${tradeHistory.length} trades`}
+              </span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-800">
-                    {['Ticket', 'Type', 'Symbol', 'Open', 'Close', 'Pips', 'Profit', 'Commission'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.trades.map((t, i) => {
-                    const isBuy = t.type.toLowerCase() === 'buy'
-                    const isProfit = t.profit >= 0
-                    return (
-                      <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition">
-                        <td className="px-4 py-3 font-mono text-gray-300 text-xs">{t.ticket}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${isBuy ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'}`}>
-                            {t.type.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-200 font-medium">{t.symbol}</td>
-                        <td className="px-4 py-3 font-mono text-gray-400 text-xs whitespace-nowrap">{t.openTime}</td>
-                        <td className="px-4 py-3 font-mono text-gray-400 text-xs whitespace-nowrap">{t.closeTime}</td>
-                        <td className="px-4 py-3 text-gray-300">{t.pips}</td>
-                        <td className={`px-4 py-3 font-semibold ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
-                          {isProfit ? '+' : ''}{Number(t.profit).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400">{Number(t.commission).toFixed(2)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+
+            {tradeHistoryLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : tradeHistory.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center py-8">
+                No trades yet — upload a CSV to get started
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-800">
+                      {['Ticket', 'Type', 'Symbol', 'Open', 'Close', 'Pips', 'Profit', 'Violations'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tradeHistory.map(t => {
+                      const tradeViolations = violations.filter(v => v.ticket === t.ticket)
+                      const isBuy = t.type.toLowerCase() === 'buy'
+                      const isProfit = t.profit >= 0
+                      return (
+                        <tr key={t.ticket} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition">
+                          <td className="px-4 py-3 font-mono text-gray-300 text-xs">{t.ticket}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                              isBuy ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'
+                            }`}>
+                              {t.type.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-200 font-medium">{t.symbol}</td>
+                          <td className="px-4 py-3 font-mono text-gray-400 text-xs whitespace-nowrap">{fmtTimestamp(t.open_time)}</td>
+                          <td className="px-4 py-3 font-mono text-gray-400 text-xs whitespace-nowrap">{fmtTimestamp(t.close_time)}</td>
+                          <td className="px-4 py-3 text-gray-300">{t.pips}</td>
+                          <td className={`px-4 py-3 font-semibold ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
+                            {isProfit ? '+' : ''}{Number(t.profit).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {tradeViolations.map(v => (
+                                <ViolationBadge key={v.id} violation={v} onDelete={handleDeleteViolation} />
+                              ))}
+                              <button
+                                onClick={e => {
+                                  const rect = e.currentTarget.getBoundingClientRect()
+                                  if (addingForTicket === t.ticket) {
+                                    setAddingForTicket(null)
+                                    setDropdownPos(null)
+                                  } else {
+                                    setAddingForTicket(t.ticket)
+                                    setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+                                  }
+                                }}
+                                className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white text-xs flex items-center justify-center transition flex-shrink-0"
+                                title="Tag a violation"
+                              >
+                                ＋
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Add-violation dropdown (rendered outside the table to avoid overflow clipping) */}
+      {addingForTicket && dropdownPos && (
+        <AddViolationDropdown
+          rules={allRules}
+          pos={dropdownPos}
+          onSelect={ruleId => handleAddViolation(addingForTicket, ruleId)}
+          onClose={() => { setAddingForTicket(null); setDropdownPos(null) }}
+        />
+      )}
 
       {showAddModal && (
         <AddAccountModal

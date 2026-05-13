@@ -60,10 +60,13 @@ interface ViolationWithRule {
   ticket: string
   rule_id: string
   auto_note: string
-  code: string
-  rule_name: string
-  category: string
-  severity: string
+  trading_rules: {
+    id: string
+    code: string
+    name: string
+    category: string
+    severity: string
+  } | null
 }
 
 interface RuleOption {
@@ -119,18 +122,22 @@ function ViolationBadge({
   violation: ViolationWithRule
   onDelete: (id: string) => void
 }) {
-  const isCritical = violation.severity === 'critical'
+  const rule = Array.isArray(violation.trading_rules)
+    ? violation.trading_rules[0]
+    : violation.trading_rules
+  const isCritical = rule?.severity === 'critical'
+  const label = rule?.code || rule?.name || violation.rule_id
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs flex items-center gap-1 whitespace-nowrap ${
       isCritical
         ? 'bg-red-900 text-red-300 border border-red-700'
         : 'bg-yellow-900 text-yellow-300 border border-yellow-700'
     }`}>
-      {violation.rule_name}
+      {label}
       <button
         onClick={() => onDelete(violation.id)}
         className="opacity-60 hover:opacity-100 cursor-pointer leading-none"
-        title={`Remove ${violation.rule_name}`}
+        title={`Remove ${label}`}
       >
         ×
       </button>
@@ -178,7 +185,7 @@ function AddViolationDropdown({
             {(byCategory[cat] ?? []).map(rule => (
               <button
                 key={rule.id}
-                onClick={() => onSelect(rule.id)}
+                onClick={e => { e.stopPropagation(); onSelect(rule.id) }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 transition text-left"
               >
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -583,8 +590,25 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
   }
 
   async function loadViolations(accountId: string) {
-    const res = await fetch(`/api/trading-journal/violations?account_id=${accountId}`)
-    if (res.ok) setViolations((await res.json()) as ViolationWithRule[])
+    const { data, error } = await supabase
+      .from('rule_violations')
+      .select(`
+        id,
+        ticket,
+        rule_id,
+        account_id,
+        auto_note,
+        trading_rules (
+          id,
+          code,
+          name,
+          category,
+          severity
+        )
+      `)
+      .eq('account_id', accountId)
+    if (error) console.error('fetchViolations error:', error)
+    setViolations((data as unknown as ViolationWithRule[]) ?? [])
   }
 
   // Reload all data when selected account changes
@@ -637,6 +661,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
   async function handleAddViolation(ticket: string, ruleId: string) {
     if (!selectedId) return
+    console.log('addViolation called:', { ticket, accountId: selectedId, ruleId })
     setAddingForTicket(null)
     setDropdownPos(null)
     const res = await fetch('/api/trading-journal/violations', {
@@ -644,6 +669,9 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ account_id: selectedId, ticket, rule_id: ruleId }),
     })
+    console.log('addViolation response status:', res.status)
+    const result = await res.json()
+    console.log('addViolation result:', result)
     if (res.ok) {
       await loadViolations(selectedId)
       fetchAccountStats(selectedId).then(setAccountStats).catch(() => {})

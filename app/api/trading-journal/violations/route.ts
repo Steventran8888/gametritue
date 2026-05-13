@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
+  console.log('POST violations called with:', body)
   const { account_id, ticket, rule_id } = body
   if (!account_id || !ticket || !rule_id) {
     return NextResponse.json({ error: 'account_id, ticket, and rule_id required' }, { status: 400 })

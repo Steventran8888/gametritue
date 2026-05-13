@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import {
   ACCOUNT_TYPE_PRESETS,
   type TradingAccount,
@@ -10,12 +10,10 @@ import {
   createAccount,
 } from '@/lib/tradingAccounts'
 
-function getSupa() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
 
 const SELECTED_ACCOUNT_COOKIE = 'selected_account_id'
 
@@ -89,7 +87,7 @@ interface AccountStats {
 }
 
 async function fetchAccountStats(accountId: string): Promise<AccountStats> {
-  const sb = getSupa()
+  const sb = supabase
   const [{ data: trades }, { count: vCount }] = await Promise.all([
     sb.from('trading_history').select('profit, commission').eq('account_id', accountId),
     sb.from('rule_violations').select('id', { count: 'exact', head: true }).eq('account_id', accountId),
@@ -402,7 +400,7 @@ function ResultPanel({ result }: { result: UploadResult }) {
 
   useEffect(() => {
     if (!result.violations_found) return
-    getSupa()
+    supabase
       .from('trading_rules')
       .select('rule_code, name')
       .then(({ data }) => {
@@ -539,7 +537,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
   // Load all active trading rules for the add-violation dropdown (once)
   useEffect(() => {
-    getSupa()
+    supabase
       .from('trading_rules')
       .select('id, rule_code, name, category, severity')
       .eq('is_active', true)
@@ -556,7 +554,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
     console.log('Fetching trades for account:', accountId)
     setTradeHistoryLoading(true)
     try {
-      const { data, error } = await getSupa()
+      const { data, error } = await supabase
         .from('trading_history')
         .select('ticket, type, symbol, open_time, close_time, pips, profit, commission')
         .eq('account_id', accountId)

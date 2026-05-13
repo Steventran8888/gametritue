@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import {
   ACCOUNT_TYPE_PRESETS,
   type TradingAccount,
@@ -11,14 +11,10 @@ import {
   deleteAccount,
 } from '@/lib/tradingAccounts'
 
-// ── Supabase browser client ───────────────────────────────────────
-
-function getClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -210,7 +206,7 @@ export default function SettingsPage() {
     if (!authed) return
     ;(async () => {
       try {
-        const { data } = await getClient().from('trading_rules').select('*').order('category')
+        const { data } = await supabase.from('trading_rules').select('*').order('category')
         if (data) setRules(data as Rule[])
       } finally {
         setLoadingRules(false)
@@ -228,7 +224,7 @@ export default function SettingsPage() {
         // Fetch trade count per account in parallel
         const counts = await Promise.all(
           accs.map(async acc => {
-            const { count } = await getClient()
+            const { count } = await supabase
               .from('trading_history')
               .select('id', { count: 'exact', head: true })
               .eq('account_id', acc.id)

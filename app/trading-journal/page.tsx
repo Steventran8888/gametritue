@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient as createAuthClient } from '../lib/supabase'
+import NavBar from '../components/NavBar'
 import {
   ACCOUNT_TYPE_PRESETS,
   type TradingAccount,
@@ -1113,7 +1114,8 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 px-4 py-8">
+    <main className="min-h-screen bg-gray-950 px-4 pt-[76px] pb-8">
+      <NavBar />
       <div className="max-w-5xl mx-auto space-y-5">
 
         {/* Header */}

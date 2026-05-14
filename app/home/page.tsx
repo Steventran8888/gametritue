@@ -6,19 +6,9 @@ import { createClient } from '../lib/supabase'
 
 const supabase = createClient()
 
-const LOGO_URL = 'https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/assets/logo/gametritue-stacked-fullcolor.svg'
-const AVATAR_BASE = 'https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/Avatar'
-
-function resolveAvatar(url: string | null | undefined): string {
-  if (!url) return ''
-  if (url.startsWith('http')) return url
-  return `${AVATAR_BASE}/${url}`
-}
 
 interface PlayerData {
   username: string
-  avatar_url: string | null
-  avatar_bg: string | null
   total_score: number
   puzzles_done: number
   trade_count: number
@@ -35,7 +25,7 @@ export default function HomePage() {
       if (!user) { router.replace('/login'); return }
 
       const [{ data: p }, { data: scoresData }, { count: tradeCount }] = await Promise.all([
-        supabase.from('players').select('username, avatar_url, avatar_bg, total_score').eq('id', user.id).single(),
+        supabase.from('players').select('username, total_score').eq('id', user.id).single(),
         supabase.from('scores').select('id').eq('player_id', user.id),
         supabase.from('trading_history').select('id', { count: 'exact', head: true }).eq('account_id', user.id),
       ])
@@ -59,8 +49,6 @@ export default function HomePage() {
 
       setPlayer({
         username: p?.username ?? user.email?.split('@')[0] ?? 'Bạn',
-        avatar_url: p?.avatar_url ?? null,
-        avatar_bg: p?.avatar_bg ?? null,
         total_score: p?.total_score ?? 0,
         puzzles_done: scoresData?.length ?? 0,
         trade_count: finalTradeCount,
@@ -82,33 +70,8 @@ export default function HomePage() {
     )
   }
 
-  const avatarSrc = resolveAvatar(player?.avatar_url)
-
   return (
     <div className="min-h-screen bg-white flex flex-col" style={{ color: '#131a52' }}>
-
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-        <img src={LOGO_URL} alt="Gametritue" className="h-8 object-contain" onError={e => { e.currentTarget.style.display = 'none' }} />
-        <div className="flex items-center gap-3">
-          {/* Avatar */}
-          <div
-            className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-            style={{ background: player?.avatar_bg ?? '#3b4bc8' }}
-          >
-            {avatarSrc
-              ? <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
-              : <span>{(player?.username ?? '?')[0].toUpperCase()}</span>}
-          </div>
-          <span className="text-sm font-medium hidden sm:block" style={{ color: '#131a52' }}>{player?.username}</span>
-          <button
-            onClick={handleLogout}
-            className="text-xs text-gray-400 hover:text-gray-700 transition px-2 py-1 rounded hover:bg-gray-100"
-          >
-            Logout
-          </button>
-        </div>
-      </header>
 
       {/* Main content */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-12 md:px-12">
@@ -193,6 +156,15 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="text-center py-4" style={{ fontSize: 12, color: '#cbd5e1' }}>
         Gametritue · Rèn trí tuệ mỗi ngày
+        {' · '}
+        <button
+          onClick={handleLogout}
+          style={{ color: '#cbd5e1', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#94a3b8' }}
+          onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1' }}
+        >
+          Đăng xuất
+        </button>
       </footer>
     </div>
   )

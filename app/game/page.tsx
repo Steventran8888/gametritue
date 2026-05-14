@@ -4,6 +4,7 @@ import { createClient } from '../lib/supabase'
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import SudokuGrid from '../components/SudokuGrid'
+import NavBar from '../components/NavBar'
 import { PUZZLES, LEVEL_NAMES, LEVEL_COLORS } from '../lib/puzzles'
 import { isFixed, isSolved, calcScore, fmtTime } from '../lib/gameLogic'
 
@@ -281,7 +282,8 @@ export default function GamePage() {
 
   // LEVEL SELECT
   if (screen === 'levels') return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-10 px-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center pt-[76px] pb-10 px-4">
+      <NavBar />
       {showLeaderboard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
           onClick={() => setShowLeaderboard(false)}>
@@ -474,7 +476,8 @@ export default function GamePage() {
 
   // PUZZLE SELECT
   if (screen === 'puzzles') return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-10 px-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center pt-[76px] pb-10 px-4">
+      <NavBar />
       <div className="w-full max-w-sm">
         <button onClick={() => setScreen('levels')} className="text-sm text-gray-500 mb-4 flex items-center gap-1">
           ← Quay lại
@@ -500,7 +503,8 @@ export default function GamePage() {
 
   // SCORE SCREEN
   if (screen === 'score') return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 pt-[76px]">
+      <NavBar />
       <div className="text-5xl mb-4">🏆</div>
       <h2 className="text-2xl font-bold text-gray-800 mb-1">Xuất sắc!</h2>
       <p className="text-sm text-gray-500 mb-6">Level {level} · Bài {puzzleNum}</p>
@@ -522,8 +526,9 @@ export default function GamePage() {
 
   // GAME SCREEN
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-3 px-2"
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center pt-[60px] pb-3 px-2"
       onKeyDown={handleKey} tabIndex={0}>
+      <NavBar />
       <div className="w-full max-w-sm flex items-center justify-between mb-2">
         <button onClick={() => { setRunning(false); setScreen('puzzles') }} className="text-sm text-gray-500">← Menu</button>
         <span className="text-sm font-bold text-gray-700">L{level} · Bài {puzzleNum}</span>

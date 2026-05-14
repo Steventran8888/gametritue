@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
 
 const LOGO_URL = 'https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/assets/logo/gametritue-stacked-fullcolor.svg'
@@ -20,6 +21,12 @@ const APPLE_SVG = (
 )
 
 export default function LoginPage() {
+  const [isTradingLog, setIsTradingLog] = useState(false)
+
+  useEffect(() => {
+    setIsTradingLog(window.location.hostname.includes('tradinglog'))
+  }, [])
+
   async function signInWithGoogle() {
     const supabase = createClient()
     const next = new URLSearchParams(window.location.search).get('next') || '/game'
@@ -59,9 +66,11 @@ export default function LoginPage() {
               onError={e => { e.currentTarget.style.display = 'none' }}
             />
           </div>
-          <p className="text-sm" style={{ color: '#94a3b8' }}>
-            Rèn trí tuệ · Leo bảng xếp hạng
-          </p>
+          {!isTradingLog && (
+            <p className="text-sm" style={{ color: '#94a3b8' }}>
+              Rèn trí tuệ · Leo bảng xếp hạng
+            </p>
+          )}
         </div>
 
 
@@ -89,7 +98,7 @@ export default function LoginPage() {
               onError={e => { e.currentTarget.style.display = 'none' }}
             />
           </div>
-          <span className="font-bold text-2xl text-white">Gametritue</span>
+          <span className="font-bold text-2xl text-white">{isTradingLog ? 'Trading Log' : 'Gametritue'}</span>
         </div>
 
         {/* Card */}

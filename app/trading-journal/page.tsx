@@ -643,40 +643,65 @@ function JournalField({ label, placeholder, value, onChange }: {
   )
 }
 
-function JournalPanel({ dateKey, dateLabel, initialEntry, accountId, onClose, onSaved }: {
+function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
   dateKey: string
   dateLabel: string
-  initialEntry: JournalEntry | null
   accountId: string
   onClose: () => void
   onSaved: (entry: JournalEntry) => void
 }) {
-  const [form, setForm] = useState<Omit<JournalEntry, 'account_id' | 'entry_date'>>({
-    ...EMPTY_JOURNAL, ...(initialEntry ?? {}),
-  })
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [form, setForm] = useState<Omit<JournalEntry, 'account_id' | 'entry_date'>>({ ...EMPTY_JOURNAL })
+  const [loading, setLoading] = useState(true)
+  const [autoStatus, setAutoStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [btnStatus, setBtnStatus]   = useState<'idle' | 'saving' | 'saved'>('idle')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Fetch fresh entry from API every time the panel opens for a date
+  useEffect(() => {
+    setLoading(true)
+    setForm({ ...EMPTY_JOURNAL })
+    setAutoStatus('idle')
+    setBtnStatus('idle')
+    fetch(`/api/trading-journal/journal?account_id=${accountId}&entry_date=${dateKey}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data) setForm({ ...EMPTY_JOURNAL, ...data })
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [dateKey, accountId])
+
+  async function doSave(payload: Omit<JournalEntry, 'account_id' | 'entry_date'>): Promise<JournalEntry | null> {
+    const res = await fetch('/api/trading-journal/journal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_id: accountId, entry_date: dateKey, ...payload }),
+    })
+    if (!res.ok) return null
+    const saved = await res.json() as JournalEntry
+    onSaved(saved)
+    return saved
+  }
 
   function update<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
     const updated = { ...form, [field]: value }
     setForm(updated)
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    setSaveStatus('saving')
+    setAutoStatus('saving')
     saveTimer.current = setTimeout(async () => {
-      const res = await fetch('/api/trading-journal/journal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account_id: accountId, entry_date: dateKey, ...updated }),
-      })
-      if (res.ok) {
-        const saved = await res.json() as JournalEntry
-        onSaved(saved)
-        setSaveStatus('saved')
-        setTimeout(() => setSaveStatus('idle'), 2000)
-      } else {
-        setSaveStatus('idle')
-      }
+      const saved = await doSave(updated)
+      setAutoStatus(saved ? 'saved' : 'idle')
+      if (saved) setTimeout(() => setAutoStatus('idle'), 2000)
     }, 2000)
+  }
+
+  async function handleSaveNow() {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    setBtnStatus('saving')
+    const saved = await doSave(form)
+    setAutoStatus('idle')
+    setBtnStatus(saved ? 'saved' : 'idle')
+    if (saved) setTimeout(() => setBtnStatus('idle'), 2000)
   }
 
   return (
@@ -691,56 +716,82 @@ function JournalPanel({ dateKey, dateLabel, initialEntry, accountId, onClose, on
           <div>
             <h2 className="text-white font-bold text-base">{dateLabel}</h2>
             <p className={`text-xs mt-0.5 transition ${
-              saveStatus === 'saving' ? 'text-yellow-500' :
-              saveStatus === 'saved'  ? 'text-green-500' : 'text-gray-600'
+              autoStatus === 'saving' ? 'text-yellow-500' :
+              autoStatus === 'saved'  ? 'text-green-500' : 'text-gray-600'
             }`}>
-              {saveStatus === 'saving' ? 'Đang lưu…' : saveStatus === 'saved' ? '✓ Đã lưu' : 'Journal'}
+              {loading ? 'Đang tải…' : autoStatus === 'saving' ? 'Đang lưu…' : autoStatus === 'saved' ? '✓ Đã lưu' : 'Journal'}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-2xl leading-none transition mt-0.5">×</button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-28">
 
-          {/* Toggle + Confidence */}
-          <div className="flex items-center justify-between gap-4">
-            <button
-              onClick={() => update('has_trades', !form.has_trades)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
-                form.has_trades ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              {form.has_trades ? '✓ Có lệnh hôm nay' : 'Không vào lệnh'}
-            </button>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-600 mr-1">Confidence</span>
-              {[1, 2, 3, 4, 5].map(n => (
-                <button
-                  key={n}
-                  onClick={() => update('confidence_score', form.confidence_score === n ? null : n)}
-                  className={`text-base transition ${(form.confidence_score ?? 0) >= n ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'}`}
-                >●</button>
-              ))}
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Toggle + Confidence */}
+              <div className="flex items-center justify-between gap-4">
+                <button
+                  onClick={() => update('has_trades', !form.has_trades)}
+                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
+                    form.has_trades ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  {form.has_trades ? '✓ Có lệnh hôm nay' : 'Không vào lệnh'}
+                </button>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-600 mr-1">Confidence</span>
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => update('confidence_score', form.confidence_score === n ? null : n)}
+                      className={`text-base transition ${(form.confidence_score ?? 0) >= n ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'}`}
+                    >●</button>
+                  ))}
+                </div>
+              </div>
 
-          {/* Section 1: Context */}
-          <div className="space-y-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bối cảnh</p>
-            <JournalField label="Market Overview" placeholder="Thị trường hôm nay như thế nào?" value={form.market_overview} onChange={v => update('market_overview', v || null)} />
-            <JournalField label="Strategy Decision" placeholder="Quyết định hôm nay làm gì?" value={form.strategy_decision} onChange={v => update('strategy_decision', v || null)} />
-          </div>
+              {/* Section 1: Context */}
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bối cảnh</p>
+                <JournalField label="Market Overview" placeholder="Thị trường hôm nay như thế nào?" value={form.market_overview} onChange={v => update('market_overview', v || null)} />
+                <JournalField label="Strategy Decision" placeholder="Quyết định hôm nay làm gì?" value={form.strategy_decision} onChange={v => update('strategy_decision', v || null)} />
+              </div>
 
-          {/* Section 2: Review */}
-          <div className="space-y-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Review</p>
-            <JournalField label="🎯 Setup & Reasoning" placeholder="Setup và lý do vào lệnh..." value={form.setup_reasoning} onChange={v => update('setup_reasoning', v || null)} />
-            <JournalField label="📈 What Went Well" placeholder="Điều gì đã làm tốt..." value={form.what_went_well} onChange={v => update('what_went_well', v || null)} />
-            <JournalField label="❌ Mistakes Made" placeholder="Lỗi nào đã mắc phải..." value={form.mistakes_made} onChange={v => update('mistakes_made', v || null)} />
-            <JournalField label="📚 Lessons Learned" placeholder="Bài học rút ra..." value={form.lessons_learned} onChange={v => update('lessons_learned', v || null)} />
-            <JournalField label="🔄 Rule Adjustments" placeholder="Cần điều chỉnh rule gì không..." value={form.rule_adjustments} onChange={v => update('rule_adjustments', v || null)} />
-          </div>
+              {/* Section 2: Review */}
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Review</p>
+                <JournalField label="🎯 Setup & Reasoning" placeholder="Setup và lý do vào lệnh..." value={form.setup_reasoning} onChange={v => update('setup_reasoning', v || null)} />
+                <JournalField label="📈 What Went Well" placeholder="Điều gì đã làm tốt..." value={form.what_went_well} onChange={v => update('what_went_well', v || null)} />
+                <JournalField label="❌ Mistakes Made" placeholder="Lỗi nào đã mắc phải..." value={form.mistakes_made} onChange={v => update('mistakes_made', v || null)} />
+                <JournalField label="📚 Lessons Learned" placeholder="Bài học rút ra..." value={form.lessons_learned} onChange={v => update('lessons_learned', v || null)} />
+                <JournalField label="🔄 Rule Adjustments" placeholder="Cần điều chỉnh rule gì không..." value={form.rule_adjustments} onChange={v => update('rule_adjustments', v || null)} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Save button — sticky at bottom */}
+        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-800 bg-gray-900">
+          <button
+            onClick={handleSaveNow}
+            disabled={loading || btnStatus === 'saving'}
+            style={{ background: btnStatus === 'saved' ? '#166534' : '#3b4bc8' }}
+            className="w-full h-[52px] rounded-full text-white font-semibold text-sm flex items-center justify-center gap-2 transition disabled:opacity-60"
+          >
+            {btnStatus === 'saving' ? (
+              <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Đang lưu…</>
+            ) : btnStatus === 'saved' ? (
+              <>✓ Đã lưu</>
+            ) : (
+              <>💾 Lưu</>
+            )}
+          </button>
         </div>
       </div>
     </div>
@@ -1488,12 +1539,10 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         const day = buildDayGroups(tradeHistory, violations, journalEntries)
           .find(d => d.dateKey === journalPanel)
         const dateLabel = day?.dateLabel ?? formatDayLabel(journalPanel)
-        const existing = journalEntries.find(j => j.entry_date === journalPanel) ?? null
         return (
           <JournalPanel
             dateKey={journalPanel}
             dateLabel={dateLabel}
-            initialEntry={existing}
             accountId={selectedAccount.id}
             onClose={() => setJournalPanel(null)}
             onSaved={saved => {

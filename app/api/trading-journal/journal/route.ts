@@ -16,7 +16,20 @@ export async function GET(req: NextRequest) {
   const accountId = req.nextUrl.searchParams.get('account_id')
   if (!accountId) return NextResponse.json({ error: 'account_id required' }, { status: 400 })
 
+  const entryDate = req.nextUrl.searchParams.get('entry_date')
   const supabase = await getServerSupabase()
+
+  if (entryDate) {
+    const { data, error } = await supabase
+      .from('trading_journal_entries')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('entry_date', entryDate)
+      .maybeSingle()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data ?? null)
+  }
+
   const { data, error } = await supabase
     .from('trading_journal_entries')
     .select('*')

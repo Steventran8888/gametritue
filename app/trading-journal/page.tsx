@@ -845,6 +845,21 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   // Timeline expand/collapse
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
 
+  // Timeline filters (persisted to localStorage)
+  const [hideWeekends, setHideWeekends] = useState<boolean>(() => {
+    try { return localStorage.getItem('tj_hideWeekends') !== 'false' } catch { return true }
+  })
+  const [onlyTradeDays, setOnlyTradeDays] = useState<boolean>(() => {
+    try { return localStorage.getItem('tj_onlyTradeDays') === 'true' } catch { return false }
+  })
+
+  function toggleHideWeekends() {
+    setHideWeekends(v => { const next = !v; try { localStorage.setItem('tj_hideWeekends', String(next)) } catch {} return next })
+  }
+  function toggleOnlyTradeDays() {
+    setOnlyTradeDays(v => { const next = !v; try { localStorage.setItem('tj_onlyTradeDays', String(next)) } catch {} return next })
+  }
+
   // Journal entries + open panel
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([])
   const [journalPanel, setJournalPanel] = useState<string | null>(null) // dateKey
@@ -1255,12 +1270,58 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
         {/* Trade History — Timeline */}
         {selectedAccount && (() => {
-          const dayGroups = buildDayGroups(tradeHistory, violations, journalEntries)
+          const todayKey = getDateKey(new Date().toISOString())
+          const allDayGroups = buildDayGroups(tradeHistory, violations, journalEntries)
+
+          // Apply filters
+          const dayGroups = allDayGroups.filter(day => {
+            const d = new Date(day.dateKey + 'T00:00:00Z')
+            const dow = d.getUTCDay() // 0=Sun, 6=Sat
+            const isWeekend = dow === 0 || dow === 6
+            const isToday = day.dateKey === todayKey
+            const hasTrades = day.trades.length > 0
+            const journalHasTrades = day.journal?.has_trades === true
+
+            // Weekend filter (today still respects this)
+            if (hideWeekends && isWeekend) return false
+
+            // Trade-only filter
+            if (onlyTradeDays) {
+              if (isToday) return journalHasTrades  // today: only show if journal says has_trades
+              return hasTrades
+            }
+
+            return true
+          })
+
           return (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-                <h2 className="text-white font-semibold">Trade History</h2>
-                <span className="text-gray-500 text-sm">
+              <div className="px-4 sm:px-6 py-4 border-b border-gray-800 flex flex-wrap items-center gap-3">
+                <h2 className="text-white font-semibold mr-auto">Trade History</h2>
+
+                {/* Filter toggles */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={toggleHideWeekends}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
+                      hideWeekends ? 'text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                    style={hideWeekends ? { background: '#3b4bc8' } : {}}
+                  >
+                    Ẩn T7 &amp; CN
+                  </button>
+                  <button
+                    onClick={toggleOnlyTradeDays}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
+                      onlyTradeDays ? 'text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                    style={onlyTradeDays ? { background: '#3b4bc8' } : {}}
+                  >
+                    Có lệnh
+                  </button>
+                </div>
+
+                <span className="text-gray-600 text-xs flex-shrink-0">
                   {tradeHistoryLoading ? 'Loading…'
                     : tradeHistory.length === 0 ? '0 lệnh'
                     : `${tradeHistory.length} lệnh · ${dayGroups.length} ngày`}

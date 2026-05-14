@@ -25,8 +25,8 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  const next = searchParams.get('next') || '/game'
-  const safePaths = ['/game', '/trading-journal']
-  const redirectTo = safePaths.includes(next) ? next : '/game'
+  const next = searchParams.get('next') || '/home'
+  const safePaths = ['/home', '/game', '/trading-journal']
+  const redirectTo = safePaths.includes(next) ? next : '/home'
   return NextResponse.redirect(`${origin}${redirectTo}`)
 }

@@ -100,9 +100,15 @@ function toParsedTrade(t: Trade): ParsedTrade {
 
 // ── Route ─────────────────────────────────────────────────────────
 
-export async function POST(req: NextRequest) {
+function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get('x-journal-password')
-  if (!pw || pw !== process.env.JOURNAL_PASSWORD) {
+  if (pw && pw === process.env.JOURNAL_PASSWORD) return true
+  const cookie = req.cookies.get('journal_auth')?.value
+  return cookie === 'true'
+}
+
+export async function POST(req: NextRequest) {
+  if (!checkAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

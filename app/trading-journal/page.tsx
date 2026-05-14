@@ -119,7 +119,7 @@ interface JournalEntry {
   market_overview: string | null
   strategy_decision: string | null
   setup_reasoning: string | null
-  what_went_well: string | null
+  went_well: string | null
   mistakes_made: string | null
   lessons_learned: string | null
   rule_adjustments: string | null
@@ -622,7 +622,7 @@ function ResultPanel({ result }: { result: UploadResult }) {
 const EMPTY_JOURNAL: Omit<JournalEntry, 'account_id' | 'entry_date'> = {
   has_trades: false, trade_count: 0, daily_pnl: 0,
   confidence_score: null, market_overview: null, strategy_decision: null,
-  setup_reasoning: null, what_went_well: null, mistakes_made: null,
+  setup_reasoning: null, went_well: null, mistakes_made: null,
   lessons_learned: null, rule_adjustments: null,
 }
 
@@ -672,15 +672,18 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
   }, [dateKey, accountId])
 
   async function doSave(payload: Omit<JournalEntry, 'account_id' | 'entry_date'>): Promise<JournalEntry | null> {
+    const body = { account_id: accountId, entry_date: dateKey, ...payload }
+    console.log('[JournalPanel] saving:', body)
     const res = await fetch('/api/trading-journal/journal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account_id: accountId, entry_date: dateKey, ...payload }),
+      body: JSON.stringify(body),
     })
+    const json = await res.json()
+    console.log('[JournalPanel] save response:', res.status, json)
     if (!res.ok) return null
-    const saved = await res.json() as JournalEntry
-    onSaved(saved)
-    return saved
+    onSaved(json as JournalEntry)
+    return json as JournalEntry
   }
 
   function update<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
@@ -767,7 +770,7 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
               <div className="space-y-4">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Review</p>
                 <JournalField label="🎯 Setup & Reasoning" placeholder="Setup và lý do vào lệnh..." value={form.setup_reasoning} onChange={v => update('setup_reasoning', v || null)} />
-                <JournalField label="📈 What Went Well" placeholder="Điều gì đã làm tốt..." value={form.what_went_well} onChange={v => update('what_went_well', v || null)} />
+                <JournalField label="📈 What Went Well" placeholder="Điều gì đã làm tốt..." value={form.went_well} onChange={v => update('went_well', v || null)} />
                 <JournalField label="❌ Mistakes Made" placeholder="Lỗi nào đã mắc phải..." value={form.mistakes_made} onChange={v => update('mistakes_made', v || null)} />
                 <JournalField label="📚 Lessons Learned" placeholder="Bài học rút ra..." value={form.lessons_learned} onChange={v => update('lessons_learned', v || null)} />
                 <JournalField label="🔄 Rule Adjustments" placeholder="Cần điều chỉnh rule gì không..." value={form.rule_adjustments} onChange={v => update('rule_adjustments', v || null)} />
@@ -1061,7 +1064,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         method: 'POST',
         body: formData,
       })
-      if (res.status === 401) { onLogout(); return }
+      if (res.status === 401) { setError('Phiên đăng nhập hết hạn — vui lòng tải lại trang'); return }
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? 'Upload failed')

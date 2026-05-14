@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   const fields = [
     'has_trades', 'trade_count', 'daily_pnl', 'confidence_score',
     'market_overview', 'strategy_decision', 'setup_reasoning',
-    'what_went_well', 'mistakes_made', 'lessons_learned', 'rule_adjustments',
+    'went_well', 'mistakes_made', 'lessons_learned', 'rule_adjustments',
   ]
   for (const f of fields) {
     if (f in body) row[f] = body[f]

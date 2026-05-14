@@ -3,9 +3,12 @@ import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
+  const xForwardedHost = request.headers.get('x-forwarded-host') || ''
   const pathname = request.nextUrl.pathname
 
-  const isTradingLog = hostname.includes('tradinglog.cc')
+  // Cloudflare forwards the real hostname via x-forwarded-host
+  const effectiveHostname = xForwardedHost || hostname
+  const isTradingLog = effectiveHostname.includes('tradinglog.cc')
 
   // tradinglog.cc → chỉ vào /trading-journal
   if (isTradingLog) {

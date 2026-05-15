@@ -2,37 +2,43 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  const hostname = request.headers.get('host') || ''
-  const xForwardedHost = request.headers.get('x-forwarded-host') || ''
+  const hostname = request.headers.get('x-forwarded-host') || request.headers.get('host') || ''
   const pathname = request.nextUrl.pathname
 
-  // Cloudflare forwards the real hostname via x-forwarded-host
-  const effectiveHostname = xForwardedHost || hostname
-  const isTradingLog = effectiveHostname.includes('tradinglog.cc')
+  const isTradingLog = hostname.includes('tradinglog.cc')
 
-  // tradinglog.cc → chỉ vào /trading-journal
   if (isTradingLog) {
-    if (pathname === '/') {
-      return NextResponse.redirect(new URL('/trading-journal', request.url))
+    // Cho phép: /trading-journal/*, /auth/*, /login, /api/*
+    if (
+      pathname.startsWith('/trading-journal') ||
+      pathname.startsWith('/auth') ||
+      pathname.startsWith('/login') ||
+      pathname.startsWith('/api')
+    ) {
+      return NextResponse.next()
     }
-    if (pathname.startsWith('/home') || pathname.startsWith('/game')) {
-      return NextResponse.redirect(new URL('/trading-journal', request.url))
-    }
+    // Tất cả còn lại → redirect về /trading-journal
+    return NextResponse.redirect(new URL('/trading-journal', request.url))
   }
 
-  // gametritue.vercel.app → chỉ vào /game
+  // gametritue.vercel.app
   if (!isTradingLog) {
-    if (pathname === '/') {
-      return NextResponse.redirect(new URL('/game', request.url))
+    // Cho phép: /game/*, /auth/*, /login, /api/*
+    if (
+      pathname.startsWith('/game') ||
+      pathname.startsWith('/auth') ||
+      pathname.startsWith('/login') ||
+      pathname.startsWith('/api')
+    ) {
+      return NextResponse.next()
     }
-    if (pathname.startsWith('/home') || pathname.startsWith('/trading-journal')) {
-      return NextResponse.redirect(new URL('/game', request.url))
-    }
+    // Tất cả còn lại → redirect về /game
+    return NextResponse.redirect(new URL('/game', request.url))
   }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)']
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)']
 }

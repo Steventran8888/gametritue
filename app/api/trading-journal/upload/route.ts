@@ -224,6 +224,10 @@ export async function POST(req: NextRequest) {
       .upsert(rows, { onConflict: 'account_id,ticket', ignoreDuplicates: false })
       .select('ticket')
 
+    if (sbError) {
+      console.error('[upload] upsert error details:', JSON.stringify(sbError))
+      console.error('[upload] sample row causing error:', JSON.stringify(rows[0]))
+    }
     console.log('[upload] upsert error:', sbError?.message ?? null)
     console.log('[upload] upsert sbData length:', sbData?.length ?? null)
 

@@ -250,6 +250,20 @@ export async function runRuleEngine(
       }
     }
 
+    // EARLY_EXIT (config-driven: profit > 0 but RR < min_rr, and TP was set)
+    if (config?.rules_enabled.EARLY_EXIT) {
+      const r_early = ruleMap['EARLY_EXIT']
+      if (r_early && t.tp !== 0 && t.profit > 0) {
+        const rAmt = (config.r_size_pct / 100) * accountBalance
+        if (rAmt > 0) {
+          const actualRR = t.profit / rAmt
+          if (actualRR < config.min_rr) {
+            addViolation(t.ticket, r_early, `Early exit: actual RR = ${actualRR.toFixed(2)}, below min ${config.min_rr}`)
+          }
+        }
+      }
+    }
+
     // HOLD_TOO_LONG
     const r_long = ruleMap['HOLD_TOO_LONG']
     if (r_long && t.durationMin > (r_long.params.max_hours ?? 24) * 60) {

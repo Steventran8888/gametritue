@@ -908,12 +908,32 @@ const CHART_TOOLTIP_STYLE = {
   borderRadius: 8, color: '#e2e8f0', fontSize: 12,
 }
 
-function PerformanceView({ tradeHistory, violations }: {
+function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap }: {
   tradeHistory: TradeHistoryRow[]
   violations: ViolationWithRule[]
+  customLabels: CustomLabel[]
+  tradeLabelMap: Record<string, string[]>
 }) {
   const data    = buildWeeklyData(tradeHistory, violations)
   const summary = computeSummary(data)
+
+  // Build weekly label data
+  const ticketToWeek = new Map(tradeHistory.map(t => [t.ticket, getWeekKey(t.close_time)]))
+  const weekLabelData = new Map<string, { label: string; positive: number; negative: number }>()
+  for (const [ticket, labelIds] of Object.entries(tradeLabelMap)) {
+    const weekKey = ticketToWeek.get(ticket)
+    if (!weekKey) continue
+    if (!weekLabelData.has(weekKey)) weekLabelData.set(weekKey, { label: weekLabel(weekKey), positive: 0, negative: 0 })
+    const w = weekLabelData.get(weekKey)!
+    for (const lid of labelIds) {
+      const lbl = customLabels.find(l => l.id === lid)
+      if (lbl?.type === 'positive') w.positive++
+      else if (lbl?.type === 'negative') w.negative++
+    }
+  }
+  const labelWeekData = Array.from(weekLabelData.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v)
+  const totalPos = labelWeekData.reduce((s,w) => s + w.positive, 0)
+  const totalNeg = labelWeekData.reduce((s,w) => s + w.negative, 0)
   const axisStyle = { fill: '#94a3b8', fontSize: 11 }
 
   if (tradeHistory.length === 0) {
@@ -965,6 +985,24 @@ function PerformanceView({ tradeHistory, violations }: {
         </ResponsiveContainer>
       </div>
 
+      {/* Chart 3 — Custom labels by week */}
+      {labelWeekData.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+          <h3 className="text-white font-semibold text-sm mb-4">🏷 Nhãn tùy chỉnh theo tuần</h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={labelWeekData} barSize={16} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+              <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+              <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 8 }} />
+              <Bar dataKey="positive" name="Tích cực 👍" fill="#22c55e" radius={[3,3,0,0]} />
+              <Bar dataKey="negative" name="Tiêu cực 👎" fill="#ef4444" radius={[3,3,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {/* Summary card */}
       {summary && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
@@ -988,6 +1026,20 @@ function PerformanceView({ tradeHistory, violations }: {
           <p className="text-sm text-gray-300 bg-gray-800 rounded-xl px-4 py-3 leading-relaxed">
             {summary.conclusion}
           </p>
+          {(totalPos > 0 || totalNeg > 0) && (
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-green-400 font-medium">👍 {totalPos} nhãn tích cực</span>
+              <span className="text-gray-600">·</span>
+              <span className="text-red-400 font-medium">👎 {totalNeg} nhãn tiêu cực</span>
+              {totalPos + totalNeg > 0 && (
+                <span className="text-gray-500">
+                  — {totalPos > totalNeg
+                    ? `✅ ${((totalPos / (totalPos + totalNeg)) * 100).toFixed(0)}% tích cực`
+                    : `📈 Cần cải thiện — ${((totalNeg / (totalPos + totalNeg)) * 100).toFixed(0)}% tiêu cực`}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1013,7 +1065,123 @@ type RuleConfig = {
 
 const TF_OPTIONS = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w']
 const TF_MINUTES_MAP: Record<string, number> = { '1m':1,'5m':5,'15m':15,'30m':30,'1h':60,'4h':240,'1d':1440,'1w':10080 }
+const UNIT_MINS: Record<string, number> = { m: 1, h: 60, d: 1440, w: 10080 }
 const SESSION_OPTS = ['Asian', 'European', 'US']
+
+function parseTF(tf: string): { value: number; unit: string } {
+  const m = tf.match(/^(\d+(?:\.\d+)?)(m|h|d|w)$/)
+  return m ? { value: parseFloat(m[1] ?? '15'), unit: m[2] ?? 'm' } : { value: 15, unit: 'm' }
+}
+
+// ── Custom Label types & helpers ──────────────────────────────────
+
+type CustomLabel = {
+  id: string
+  name: string
+  type: 'positive' | 'negative'
+  color: string
+  colorName: string
+}
+
+const POSITIVE_COLORS = [
+  { color: '#16a34a', name: 'Xuất sắc' },
+  { color: '#22c55e', name: 'Tốt' },
+  { color: '#3b4bc8', name: 'Đúng hướng' },
+  { color: '#0891b2', name: 'Kỷ luật tốt' },
+]
+const NEGATIVE_COLORS = [
+  { color: '#fbbf24', name: 'Nhắc nhở' },
+  { color: '#f97316', name: 'Cảnh báo' },
+  { color: '#f472b6', name: 'Vi phạm nhẹ' },
+  { color: '#ef4444', name: 'Vi phạm' },
+  { color: '#dc2626', name: 'Vi phạm nghiêm trọng' },
+  { color: '#7c3aed', name: 'Lỗi hệ thống' },
+]
+
+function loadLabelStore(accountId: string): { labels: CustomLabel[]; tradeLabelMap: Record<string, string[]> } {
+  try {
+    const raw = localStorage.getItem(`custom_labels_${accountId}`)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return { labels: [], tradeLabelMap: {} }
+}
+function saveLabelStore(accountId: string, labels: CustomLabel[], tradeLabelMap: Record<string, string[]>) {
+  try { localStorage.setItem(`custom_labels_${accountId}`, JSON.stringify({ labels, tradeLabelMap })) } catch {}
+}
+
+// ── CustomLabelsModal ─────────────────────────────────────────────
+
+function CustomLabelsModal({ labels, onClose, onAdd, onDelete }: {
+  labels: CustomLabel[]
+  onClose: () => void
+  onAdd: (l: CustomLabel) => void
+  onDelete: (id: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState<'positive' | 'negative'>('positive')
+  const [color, setColor] = useState(POSITIVE_COLORS[0]!.color)
+  const palette = type === 'positive' ? POSITIVE_COLORS : NEGATIVE_COLORS
+
+  function handleAdd() {
+    if (!name.trim()) return
+    const def = palette.find(c => c.color === color) ?? palette[0]!
+    onAdd({ id: Date.now().toString(), name: name.trim(), type, color: def.color, colorName: def.name })
+    setName('')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+          <h2 className="text-white font-bold text-base">🏷 Nhãn tùy chỉnh</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+        </div>
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {labels.length === 0
+            ? <p className="text-gray-600 text-sm text-center py-2">Chưa có nhãn nào</p>
+            : <div className="space-y-1.5">
+                {labels.map(l => (
+                  <div key={l.id} className="flex items-center gap-3 px-3 py-2 bg-gray-800 rounded-xl">
+                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: l.color }} />
+                    <span className="text-gray-200 text-sm flex-1 truncate">{l.name}</span>
+                    <span className="text-gray-500 text-xs">{l.type === 'positive' ? '👍' : '👎'}</span>
+                    <button onClick={() => onDelete(l.id)} className="text-gray-600 hover:text-red-400 transition text-sm">×</button>
+                  </div>
+                ))}
+              </div>
+          }
+          <div className="border-t border-gray-800 pt-4 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">+ Thêm nhãn mới</p>
+            <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              placeholder="Tên nhãn..."
+              className="w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition" />
+            <div className="flex gap-2">
+              {(['positive', 'negative'] as const).map(t => (
+                <button key={t} onClick={() => { setType(t); setColor(t === 'positive' ? POSITIVE_COLORS[0]!.color : NEGATIVE_COLORS[0]!.color) }}
+                  className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition ${
+                    type === t ? (t === 'positive' ? 'border-green-600 text-green-400 bg-green-900/20' : 'border-red-600 text-red-400 bg-red-900/20') : 'border-gray-700 text-gray-500 hover:border-gray-600'
+                  }`}>
+                  {t === 'positive' ? '👍 Tích cực' : '👎 Tiêu cực'}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {palette.map(c => (
+                <button key={c.color} onClick={() => setColor(c.color)} title={c.name}
+                  className="w-8 h-8 rounded-full transition-transform hover:scale-110 flex-shrink-0"
+                  style={{ background: c.color, outline: color === c.color ? `3px solid ${c.color}` : 'none', outlineOffset: 2 }} />
+              ))}
+            </div>
+            <button onClick={handleAdd} disabled={!name.trim()}
+              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold transition">
+              Thêm
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const DEFAULT_RULE_CONFIG: RuleConfig = {
   timeframe: '15m', r_size_pct: 1, max_trades_day: 3, min_rr: 2,
@@ -1039,7 +1207,7 @@ const RULE_DEFS: { code: string; group: string; name: string; desc: string; seve
   { code: 'REVENGE_TRADE',     group: 'Behavior', name: 'Revenge trade',      desc: 'Vào lệnh ngay sau khi thua',                       severity: 'critical' },
   { code: 'CONSEC_LOSS',       group: 'Behavior', name: 'Thua liên tiếp',     desc: 'Thua quá số lệnh liên tiếp cho phép',              severity: 'critical' },
   { code: 'RR_LOW',            group: 'Behavior', name: 'RR thấp',            desc: 'RR thực tế < min RR',                              severity: 'warning'  },
-  { code: 'EARLY_EXIT',        group: 'Behavior', name: 'Thoát sớm',          desc: 'Đóng lệnh trước TP khi đang lãi',                  severity: 'warning', stub: true },
+  { code: 'EARLY_EXIT',        group: 'Behavior', name: 'Thoát sớm',          desc: 'Đóng lệnh trước TP khi đang lãi (actual RR < min RR)', severity: 'warning' },
 ]
 const RULE_GROUPS = ['Risk', 'Time', 'Behavior']
 
@@ -1099,7 +1267,8 @@ function RulesModal({ accountId, accounts, onClose }: {
   }
 
   const ic = 'bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
-  const tfMin = TF_MINUTES_MAP[cfg.timeframe] ?? 15
+  const { value: tfValue, unit: tfUnit } = parseTF(cfg.timeframe)
+  const tfMin = tfValue * (UNIT_MINS[tfUnit] ?? 1)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
@@ -1136,20 +1305,28 @@ function RulesModal({ accountId, accounts, onClose }: {
               {tab === 1 && (
                 <div className="space-y-5">
                   <div>
-                    <p className="text-xs text-gray-400 font-medium mb-2">Timeframe</p>
-                    <div className="flex flex-wrap gap-2">
-                      {TF_OPTIONS.map(tf => (
-                        <button key={tf} onClick={() => set('timeframe', tf)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                            cfg.timeframe === tf ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                          }`}>{tf}</button>
-                      ))}
+                    <p className="text-xs text-gray-400 font-medium mb-1.5">
+                      Timeframe <span className="text-gray-600">= {tfMin.toFixed(0)} phút</span>
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="number" step="0.01" min="1" value={tfValue}
+                        onChange={e => set('timeframe', `${parseFloat(e.target.value) || 1}${tfUnit}`)}
+                        className={`${ic} flex-1`}
+                      />
+                      <select
+                        value={tfUnit}
+                        onChange={e => set('timeframe', `${tfValue}${e.target.value}`)}
+                        className={`${ic} w-20`}
+                      >
+                        {['m','h','d','w'].map(u => <option key={u} value={u}>{u === 'm' ? 'phút' : u === 'h' ? 'giờ' : u === 'd' ? 'ngày' : 'tuần'}</option>)}
+                      </select>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-gray-400 font-medium mb-1.5">R Size <span className="text-gray-600">% of balance</span></p>
-                      <input type="number" step="0.1" min="0.1" max="10" value={cfg.r_size_pct}
+                      <input type="number" step="0.25" min="0.01" max="10" placeholder="0.5" value={cfg.r_size_pct}
                         onChange={e => set('r_size_pct', parseFloat(e.target.value) || 1)} className={ic} />
                     </div>
                     <div>
@@ -1300,6 +1477,10 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   const [accountSelectorHighlight, setAccountSelectorHighlight] = useState(false)
   const [activeView, setActiveView] = useState<'timeline' | 'performance'>('timeline')
   const [showRulesModal, setShowRulesModal] = useState(false)
+  const [customLabels, setCustomLabels] = useState<CustomLabel[]>([])
+  const [tradeLabelMap, setTradeLabelMap] = useState<Record<string, string[]>>({})
+  const [showLabelsModal, setShowLabelsModal] = useState(false)
+  const [labelingTicket, setLabelingTicket] = useState<string | null>(null)
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false)
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -1599,6 +1780,14 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
     })()
   }, [selectedAccount?.id])
 
+  // Load custom labels from localStorage when account changes
+  useEffect(() => {
+    if (!selectedId) { setCustomLabels([]); setTradeLabelMap({}); return }
+    const store = loadLabelStore(selectedId)
+    setCustomLabels(store.labels)
+    setTradeLabelMap(store.tradeLabelMap)
+  }, [selectedId])
+
   function toggleDay(dateKey: string) {
     setExpandedDays(prev => {
       const next = new Set(prev)
@@ -1606,6 +1795,32 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       else next.add(dateKey)
       return next
     })
+  }
+
+  // ── Custom labels ─────────────────────────────────────────────────
+
+  function addCustomLabel(label: CustomLabel) {
+    const newLabels = [...customLabels, label]
+    setCustomLabels(newLabels)
+    if (selectedId) saveLabelStore(selectedId, newLabels, tradeLabelMap)
+  }
+  function deleteCustomLabel(id: string) {
+    const newLabels = customLabels.filter(l => l.id !== id)
+    const newMap: Record<string, string[]> = {}
+    for (const [ticket, ids] of Object.entries(tradeLabelMap)) {
+      const filtered = ids.filter(lid => lid !== id)
+      if (filtered.length > 0) newMap[ticket] = filtered
+    }
+    setCustomLabels(newLabels)
+    setTradeLabelMap(newMap)
+    if (selectedId) saveLabelStore(selectedId, newLabels, newMap)
+  }
+  function toggleTradeLabel(ticket: string, labelId: string) {
+    const current = tradeLabelMap[ticket] ?? []
+    const next = current.includes(labelId) ? current.filter(id => id !== labelId) : [...current, labelId]
+    const newMap = { ...tradeLabelMap, [ticket]: next }
+    setTradeLabelMap(newMap)
+    if (selectedId) saveLabelStore(selectedId, customLabels, newMap)
   }
 
   // ── Re-scan ───────────────────────────────────────────────────────
@@ -2019,7 +2234,12 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
         {/* Performance view */}
         {selectedAccount && activeView === 'performance' && (
-          <PerformanceView tradeHistory={tradeHistory} violations={violations} />
+          <PerformanceView
+            tradeHistory={tradeHistory}
+            violations={violations}
+            customLabels={customLabels}
+            tradeLabelMap={tradeLabelMap}
+          />
         )}
 
         {/* Trade History — Timeline */}
@@ -2055,7 +2275,17 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
           return (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-4 sm:px-6 py-4 border-b border-gray-800 flex flex-wrap items-center gap-3">
-                <h2 className="text-white font-semibold mr-auto">Trade History</h2>
+                <div className="flex items-center gap-2 mr-auto">
+                  <h2 className="text-white font-semibold">Trade History</h2>
+                  <button
+                    onClick={() => setShowLabelsModal(true)}
+                    title="Quản lý nhãn tùy chỉnh"
+                    className="text-gray-500 hover:text-gray-300 text-sm transition"
+                  >⚙</button>
+                  {customLabels.length > 0 && (
+                    <span className="text-gray-600 text-xs">{customLabels.length} nhãn</span>
+                  )}
+                </div>
 
                 {/* Filter toggles */}
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -2234,6 +2464,21 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                                           {tradeViolations.map(v => (
                                             <ViolationBadge key={v.id} violation={v} onDelete={handleDeleteViolation} />
                                           ))}
+                                          {/* Custom label badges */}
+                                          {(tradeLabelMap[t.ticket] ?? []).map(lid => {
+                                            const lbl = customLabels.find(l => l.id === lid)
+                                            if (!lbl) return null
+                                            return (
+                                              <span key={lid}
+                                                onClick={() => toggleTradeLabel(t.ticket, lid)}
+                                                className="px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer"
+                                                style={{ background: lbl.color + '30', color: lbl.color, border: `1px solid ${lbl.color}60` }}
+                                                title={`${lbl.colorName} — click để bỏ`}>
+                                                {lbl.name}
+                                              </span>
+                                            )
+                                          })}
+                                          {/* Add violation */}
                                           <button
                                             onClick={e => {
                                               const rect = e.currentTarget.getBoundingClientRect()
@@ -2251,6 +2496,35 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                                           >
                                             ＋
                                           </button>
+                                          {/* Add label */}
+                                          {customLabels.length > 0 && (
+                                            <div className="relative flex-shrink-0">
+                                              <button
+                                                onClick={() => setLabelingTicket(labelingTicket === t.ticket ? null : t.ticket)}
+                                                className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white flex items-center justify-center transition text-xs"
+                                                title="Gắn nhãn"
+                                              >🏷</button>
+                                              {labelingTicket === t.ticket && (
+                                                <>
+                                                  <div className="fixed inset-0 z-40" onClick={() => setLabelingTicket(null)} />
+                                                  <div className="absolute right-0 top-full mt-1 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-48 py-1 overflow-hidden">
+                                                    {customLabels.map(lbl => {
+                                                      const applied = (tradeLabelMap[t.ticket] ?? []).includes(lbl.id)
+                                                      return (
+                                                        <button key={lbl.id}
+                                                          onClick={() => toggleTradeLabel(t.ticket, lbl.id)}
+                                                          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-gray-700 transition">
+                                                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: lbl.color }} />
+                                                          <span className="flex-1 truncate" style={{ color: lbl.color }}>{lbl.name}</span>
+                                                          {applied && <span className="text-gray-400">✓</span>}
+                                                        </button>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                </>
+                                              )}
+                                            </div>
+                                          )}
                                         </div>
                                       </td>
                                     </tr>
@@ -2387,6 +2661,16 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             setSelectedId(acc.id)
             setShowAddModal(false)
           }}
+        />
+      )}
+
+      {/* Custom Labels Modal */}
+      {showLabelsModal && (
+        <CustomLabelsModal
+          labels={customLabels}
+          onClose={() => setShowLabelsModal(false)}
+          onAdd={addCustomLabel}
+          onDelete={deleteCustomLabel}
         />
       )}
 

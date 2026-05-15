@@ -2,6 +2,26 @@ import { getServerSupabase } from './supabaseServer'
 
 // ── Types ─────────────────────────────────────────────────────────
 
+export type RuleConfig = {
+  timeframe: string
+  r_size_pct: number
+  max_trades_day: number
+  min_rr: number
+  min_hold_tf: number        // multiplier of timeframe
+  max_hold_tf: number
+  allowed_sessions: string[]
+  allow_weekend: boolean
+  max_consec_loss: number
+  revenge_window_min: number
+  news_buffer_min: number
+  rules_enabled: Record<string, boolean>
+}
+
+const TF_MINUTES: Record<string, number> = {
+  '1m': 1, '5m': 5, '15m': 15, '30m': 30,
+  '1h': 60, '4h': 240, '1d': 1440, '1w': 10080,
+}
+
 export type ParsedTrade = {
   ticket: string
   open: string        // FTMO format "2024.01.15 10:30:00"
@@ -58,6 +78,7 @@ export async function runRuleEngine(
   trades: ParsedTrade[],
   accountId: string,
   accountBalance: number,
+  config?: RuleConfig | null,
 ): Promise<ViolationResult[]> {
   console.log('Rule engine input:', {
     tradesCount: trades.length,
@@ -68,16 +89,40 @@ export async function runRuleEngine(
 
   const supabase = await getServerSupabase()
 
-  // Fetch active auto rules
-  const { data: rules, error } = await supabase
-    .from('trading_rules')
-    .select('*')
-    .eq('detect_type', 'auto')
-    .eq('is_active', true)
+  // Fetch auto rules — all when config present (config controls is_active), else only active
+  const baseQuery = supabase.from('trading_rules').select('*').eq('detect_type', 'auto')
+  const { data: rawRules, error } = config
+    ? await baseQuery
+    : await baseQuery.eq('is_active', true)
 
-  console.log('Active auto rules:', rules?.map(r => r.code) ?? [], 'error:', error?.message ?? null)
+  console.log('Auto rules fetched:', rawRules?.map(r => r.code) ?? [], 'error:', error?.message ?? null)
+  if (error || !rawRules || rawRules.length === 0) return []
 
-  if (error || !rules || rules.length === 0) return []
+  const rules = rawRules as TradingRule[]
+
+  // Apply config overrides to params and is_active
+  if (config) {
+    const tfMin = TF_MINUTES[config.timeframe] ?? 15
+    for (const r of rules) {
+      // Map SESSION_US → SESSION_VIOLATION for config lookup
+      const cfgKey = r.code === 'SESSION_US' ? 'SESSION_VIOLATION' : r.code
+      if (cfgKey in config.rules_enabled) r.is_active = config.rules_enabled[cfgKey] ?? false
+
+      switch (r.code) {
+        case 'OVERTRADING':   r.params = { ...r.params, max_trades: config.max_trades_day }; break
+        case 'RR_LOW':        r.params = { ...r.params, min_rr: config.min_rr }; break
+        case 'RISK_HIGH':     r.params = { ...r.params, max_risk_pct: config.r_size_pct * 2 }; break
+        case 'RISK_MEDIUM':   r.params = { ...r.params, warn_risk_pct: config.r_size_pct }; break
+        case 'HOLD_TOO_LONG': r.params = { ...r.params, max_hours: (config.max_hold_tf * tfMin) / 60 }; break
+        case 'HOLD_TOO_SHORT':r.params = { ...r.params, min_minutes: config.min_hold_tf * tfMin }; break
+        case 'REVENGE_TRADE': r.params = { ...r.params, minutes: config.revenge_window_min }; break
+        case 'CONSEC_LOSS':   r.params = { ...r.params, max_losses: config.max_consec_loss }; break
+      }
+    }
+  }
+
+  const activeRules = config ? rules.filter(r => r.is_active) : rules
+  console.log('Active rules after config:', activeRules.map(r => r.code))
 
   // Fetch account for DD settings
   const { data: account } = await supabase
@@ -87,7 +132,7 @@ export async function runRuleEngine(
     .single()
 
   const ruleMap: Record<string, TradingRule> = {}
-  for (const r of rules as TradingRule[]) ruleMap[r.code] = r
+  for (const r of activeRules) ruleMap[r.code] = r
 
   // Sort trades by open time ascending
   const sorted = [...trades].sort(
@@ -192,11 +237,17 @@ export async function runRuleEngine(
       }
     }
 
-    // SESSION_US
+    // SESSION_US / SESSION_VIOLATION
     const r_session = ruleMap['SESSION_US']
-    console.log('SESSION_US check:', { session: t.session, wouldFlag: t.session === 'US' })
-    if (r_session && t.session === 'US') {
-      addViolation(t.ticket, r_session, `Trade opened during US session`)
+    if (r_session) {
+      const isViolation = config
+        ? !config.allowed_sessions.includes(t.session)  // config-driven: check allowed list
+        : t.session === 'US'                             // legacy: only flag US
+      if (isViolation) {
+        addViolation(t.ticket, r_session, config
+          ? `${t.session} session not in allowed sessions [${config.allowed_sessions.join(', ')}]`
+          : `Trade opened during US session`)
+      }
     }
 
     // HOLD_TOO_LONG

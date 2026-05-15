@@ -994,6 +994,299 @@ function PerformanceView({ tradeHistory, violations }: {
   )
 }
 
+// ── Rules Modal ───────────────────────────────────────────────────
+
+type RuleConfig = {
+  timeframe: string
+  r_size_pct: number
+  max_trades_day: number
+  min_rr: number
+  min_hold_tf: number
+  max_hold_tf: number
+  allowed_sessions: string[]
+  allow_weekend: boolean
+  max_consec_loss: number
+  revenge_window_min: number
+  news_buffer_min: number
+  rules_enabled: Record<string, boolean>
+}
+
+const TF_OPTIONS = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w']
+const TF_MINUTES_MAP: Record<string, number> = { '1m':1,'5m':5,'15m':15,'30m':30,'1h':60,'4h':240,'1d':1440,'1w':10080 }
+const SESSION_OPTS = ['Asian', 'European', 'US']
+
+const DEFAULT_RULE_CONFIG: RuleConfig = {
+  timeframe: '15m', r_size_pct: 1, max_trades_day: 3, min_rr: 2,
+  min_hold_tf: 0.5, max_hold_tf: 10, allowed_sessions: ['Asian', 'European'],
+  allow_weekend: false, max_consec_loss: 2, revenge_window_min: 15, news_buffer_min: 30,
+  rules_enabled: {
+    RISK_HIGH: true, RISK_MEDIUM: true, NO_SL: true, MARTINGALE: true,
+    HOLD_TOO_SHORT: true, HOLD_TOO_LONG: true, SESSION_VIOLATION: true, NEWS_TRADE: false,
+    OVERTRADING: true, REVENGE_TRADE: true, CONSEC_LOSS: true, RR_LOW: true, EARLY_EXIT: false,
+  },
+}
+
+const RULE_DEFS: { code: string; group: string; name: string; desc: string; severity: string; stub?: boolean }[] = [
+  { code: 'RISK_HIGH',         group: 'Risk',     name: 'Risk quá cao',       desc: 'Loss > 2R trong 1 lệnh',                           severity: 'critical' },
+  { code: 'RISK_MEDIUM',       group: 'Risk',     name: 'Risk cao',           desc: 'Loss 1R–2R trong 1 lệnh',                          severity: 'warning'  },
+  { code: 'NO_SL',             group: 'Risk',     name: 'Không có SL',        desc: 'Lệnh không đặt Stop Loss',                         severity: 'critical' },
+  { code: 'MARTINGALE',        group: 'Risk',     name: 'Martingale',         desc: 'Tăng lot sau khi thua',                            severity: 'critical' },
+  { code: 'HOLD_TOO_SHORT',    group: 'Time',     name: 'Hold quá ngắn',      desc: 'Hold < min_hold × timeframe',                      severity: 'warning'  },
+  { code: 'HOLD_TOO_LONG',     group: 'Time',     name: 'Hold quá lâu',       desc: 'Hold > max_hold × timeframe',                      severity: 'warning'  },
+  { code: 'SESSION_VIOLATION', group: 'Time',     name: 'Sai session',        desc: 'Vào lệnh ngoài session cho phép',                  severity: 'warning'  },
+  { code: 'NEWS_TRADE',        group: 'Time',     name: 'Giao dịch tin tức',  desc: 'Vào lệnh gần high-impact news',                    severity: 'warning', stub: true },
+  { code: 'OVERTRADING',       group: 'Behavior', name: 'Overtrading',        desc: 'Quá số lệnh/ngày cho phép',                        severity: 'critical' },
+  { code: 'REVENGE_TRADE',     group: 'Behavior', name: 'Revenge trade',      desc: 'Vào lệnh ngay sau khi thua',                       severity: 'critical' },
+  { code: 'CONSEC_LOSS',       group: 'Behavior', name: 'Thua liên tiếp',     desc: 'Thua quá số lệnh liên tiếp cho phép',              severity: 'critical' },
+  { code: 'RR_LOW',            group: 'Behavior', name: 'RR thấp',            desc: 'RR thực tế < min RR',                              severity: 'warning'  },
+  { code: 'EARLY_EXIT',        group: 'Behavior', name: 'Thoát sớm',          desc: 'Đóng lệnh trước TP khi đang lãi',                  severity: 'warning', stub: true },
+]
+const RULE_GROUPS = ['Risk', 'Time', 'Behavior']
+
+function RulesModal({ accountId, accounts, onClose }: {
+  accountId: string
+  accounts: TradingAccount[]
+  onClose: () => void
+}) {
+  const [tab, setTab]     = useState<1|2|3>(1)
+  const [cfg, setCfg]     = useState<RuleConfig>({ ...DEFAULT_RULE_CONFIG })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving]   = useState(false)
+  const [done, setDone]       = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/trading-journal/rule-config?account_id=${accountId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setCfg(prev => ({ ...prev, ...data })); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [accountId])
+
+  function set<K extends keyof RuleConfig>(key: K, val: RuleConfig[K]) {
+    setCfg(c => ({ ...c, [key]: val }))
+  }
+  function toggleSession(s: string) {
+    setCfg(c => ({
+      ...c,
+      allowed_sessions: c.allowed_sessions.includes(s)
+        ? c.allowed_sessions.filter(x => x !== s)
+        : [...c.allowed_sessions, s],
+    }))
+  }
+  function toggleRule(code: string) {
+    setCfg(c => ({ ...c, rules_enabled: { ...c.rules_enabled, [code]: !c.rules_enabled[code] } }))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await fetch('/api/trading-journal/rule-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...cfg, account_id: accountId }),
+      })
+      for (const acc of accounts) {
+        await fetch('/api/trading-journal/rescan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account_id: acc.id }),
+        })
+      }
+      setDone(true)
+      setTimeout(() => { setDone(false); onClose() }, 1500)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const ic = 'bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
+  const tfMin = TF_MINUTES_MAP[cfg.timeframe] ?? 15
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
+          <h2 className="text-white font-bold text-base">⚙ Rule Setup</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-800 flex-shrink-0">
+          {(['Method', 'Session & Behavior', 'Rules On/Off'] as const).map((label, i) => (
+            <button key={i}
+              onClick={() => setTab((i + 1) as 1|2|3)}
+              className={`flex-1 py-3 text-xs font-semibold transition ${
+                tab === i + 1 ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-gray-500 hover:text-gray-300'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <span className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* TAB 1: METHOD */}
+              {tab === 1 && (
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium mb-2">Timeframe</p>
+                    <div className="flex flex-wrap gap-2">
+                      {TF_OPTIONS.map(tf => (
+                        <button key={tf} onClick={() => set('timeframe', tf)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                            cfg.timeframe === tf ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                          }`}>{tf}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">R Size <span className="text-gray-600">% of balance</span></p>
+                      <input type="number" step="0.1" min="0.1" max="10" value={cfg.r_size_pct}
+                        onChange={e => set('r_size_pct', parseFloat(e.target.value) || 1)} className={ic} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">Max trades/day</p>
+                      <input type="number" min="1" max="20" value={cfg.max_trades_day}
+                        onChange={e => set('max_trades_day', parseInt(e.target.value) || 3)} className={ic} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">Min RR <span className="text-gray-600">(1:X)</span></p>
+                      <input type="number" step="0.5" min="0.5" max="10" value={cfg.min_rr}
+                        onChange={e => set('min_rr', parseFloat(e.target.value) || 2)} className={ic} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">
+                        Min hold <span className="text-gray-600">× TF = {(cfg.min_hold_tf * tfMin).toFixed(0)}p</span>
+                      </p>
+                      <input type="number" step="0.25" min="0" value={cfg.min_hold_tf}
+                        onChange={e => set('min_hold_tf', parseFloat(e.target.value) || 0)} className={ic} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">
+                        Max hold <span className="text-gray-600">× TF = {(cfg.max_hold_tf * tfMin).toFixed(0)}p</span>
+                      </p>
+                      <input type="number" step="1" min="1" value={cfg.max_hold_tf}
+                        onChange={e => set('max_hold_tf', parseFloat(e.target.value) || 10)} className={ic} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: SESSION & BEHAVIOR */}
+              {tab === 2 && (
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium mb-2">Phiên giao dịch cho phép</p>
+                    <div className="flex gap-3">
+                      {SESSION_OPTS.map(s => {
+                        const on = cfg.allowed_sessions.includes(s)
+                        return (
+                          <button key={s} onClick={() => toggleSession(s)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition ${
+                              on ? 'border-green-600 text-green-400 bg-green-900/20' : 'border-gray-700 text-gray-500 bg-gray-800/50 hover:border-gray-600'
+                            }`}>
+                            {on ? '✓' : '✗'} {s}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between py-3 border-t border-gray-800">
+                    <div>
+                      <p className="text-sm text-gray-300">Cho phép giao dịch cuối tuần</p>
+                      <p className="text-xs text-gray-600 mt-0.5">T7 và CN</p>
+                    </div>
+                    <button onClick={() => set('allow_weekend', !cfg.allow_weekend)}
+                      className={`w-11 h-6 rounded-full transition-colors relative ${cfg.allow_weekend ? 'bg-indigo-600' : 'bg-gray-700'}`}>
+                      <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${cfg.allow_weekend ? 'left-6' : 'left-1'}`} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">Max thua liên tiếp</p>
+                      <input type="number" min="1" max="10" value={cfg.max_consec_loss}
+                        onChange={e => set('max_consec_loss', parseInt(e.target.value) || 2)} className={ic} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">Revenge window <span className="text-gray-600">phút</span></p>
+                      <input type="number" min="1" max="120" value={cfg.revenge_window_min}
+                        onChange={e => set('revenge_window_min', parseInt(e.target.value) || 15)} className={ic} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium mb-1.5">News buffer <span className="text-gray-600">phút</span></p>
+                      <input type="number" min="0" max="60" value={cfg.news_buffer_min}
+                        onChange={e => set('news_buffer_min', parseInt(e.target.value) || 30)} className={ic} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: RULES ON/OFF */}
+              {tab === 3 && (
+                <div className="space-y-4">
+                  {RULE_GROUPS.map(group => (
+                    <div key={group}>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{group}</p>
+                      <div className="space-y-1">
+                        {RULE_DEFS.filter(r => r.group === group).map(r => {
+                          const on = cfg.rules_enabled[r.code] ?? false
+                          return (
+                            <div key={r.code}
+                              className={`flex items-center gap-3 px-4 py-3 rounded-xl ${r.stub ? 'opacity-40' : 'hover:bg-gray-800/50'} transition`}>
+                              <button onClick={() => !r.stub && toggleRule(r.code)}
+                                disabled={r.stub}
+                                className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${on && !r.stub ? 'bg-indigo-600' : 'bg-gray-700'}`}>
+                                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on && !r.stub ? 'left-[18px]' : 'left-0.5'}`} />
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`text-sm font-medium ${on && !r.stub ? 'text-gray-200' : 'text-gray-500'}`}>{r.name}</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                                    r.severity === 'critical' ? 'text-red-400 bg-red-950' : 'text-yellow-400 bg-yellow-950'
+                                  }`}>{r.severity.toUpperCase()}</span>
+                                  {r.stub && <span className="text-gray-600 text-xs">Soon</span>}
+                                </div>
+                                <p className="text-gray-600 text-xs mt-0.5">{r.desc}</p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-800 flex-shrink-0">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400 text-sm font-semibold hover:border-gray-600 transition">
+            Hủy
+          </button>
+          <button onClick={handleSave} disabled={saving || done}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${
+              done ? 'bg-green-700 text-white' : 'bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white'
+            }`}>
+            {done ? '✓ Đã lưu' : saving
+              ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Đang lưu & rescan…</>
+              : 'Lưu & Rescan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Dashboard ────────────────────────────────────────────────────
 
 function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => void }) {
@@ -1006,6 +1299,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   const [showAccountSettings, setShowAccountSettings] = useState(false)
   const [accountSelectorHighlight, setAccountSelectorHighlight] = useState(false)
   const [activeView, setActiveView] = useState<'timeline' | 'performance'>('timeline')
+  const [showRulesModal, setShowRulesModal] = useState(false)
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false)
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -1612,6 +1906,13 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             >
               📊 Performance
             </button>
+            <button
+              onClick={() => { if (selectedId) setShowRulesModal(true) }}
+              disabled={!selectedId}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 transition whitespace-nowrap flex-shrink-0 disabled:opacity-40"
+            >
+              ⚙ Rules
+            </button>
           </div>
 
           {/* Account info strip */}
@@ -2086,6 +2387,15 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             setSelectedId(acc.id)
             setShowAddModal(false)
           }}
+        />
+      )}
+
+      {/* Rules Modal */}
+      {showRulesModal && selectedId && (
+        <RulesModal
+          accountId={selectedId}
+          accounts={accounts}
+          onClose={() => setShowRulesModal(false)}
         />
       )}
 

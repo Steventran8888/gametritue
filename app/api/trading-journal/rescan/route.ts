@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSupabase } from '@/lib/supabaseServer'
-import { runRuleEngine, saveViolations, type ParsedTrade } from '@/lib/ruleEngine'
+import { getServerSupabase, getServiceSupabase } from '@/lib/supabaseServer'
+import { runRuleEngine, saveViolations, type ParsedTrade, type RuleConfig } from '@/lib/ruleEngine'
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get('x-journal-password')
@@ -50,6 +50,14 @@ export async function POST(req: NextRequest) {
 
   const balance = account?.current_balance ?? account?.initial_balance ?? 0
 
+  // Fetch rule config for this account (config-driven thresholds)
+  const { data: ruleConfig } = await getServiceSupabase()
+    .from('trading_rule_configs')
+    .select('*')
+    .eq('account_id', accountId)
+    .maybeSingle()
+  const typedConfig = ruleConfig as RuleConfig | null
+
   const trades: ParsedTrade[] = rows.map(r => ({
     ticket:     r.ticket,
     open:       isoToFTMO(r.open_time),
@@ -70,7 +78,7 @@ export async function POST(req: NextRequest) {
     durationMin: r.duration_min,
   }))
 
-  const violations = await runRuleEngine(trades, accountId, balance)
+  const violations = await runRuleEngine(trades, accountId, balance, typedConfig)
   const violationsSaved = await saveViolations(violations, accountId)
 
   console.log(`Rescan ${accountId}: ${rows.length} trades, ${violations.length} violations`)

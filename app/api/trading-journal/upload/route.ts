@@ -138,8 +138,9 @@ export async function POST(req: NextRequest) {
 
   const supabase = await getServerSupabase()
 
-  // Bug 1 fix: verify account belongs to current user
-  const { data: { user } } = await supabase.auth.getUser()
+  // Verify account belongs to current user
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  console.log('[upload] auth.getUser:', user?.id ?? null, '| error:', authError?.message ?? null)
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -150,14 +151,18 @@ export async function POST(req: NextRequest) {
     .eq('id', accountId)
     .single()
 
+  console.log('[upload] account lookup:', account?.id ?? null, '| owner_id:', account?.owner_id ?? null, '| error:', accError?.message ?? null)
+
   if (accError || !account) {
     return NextResponse.json({ error: 'Account not found' }, { status: 404 })
   }
-  if (account.owner_id !== user.id) {
+  if (account.owner_id && account.owner_id !== user.id) {
+    console.error('[upload] 403 — account.owner_id:', account.owner_id, '!== user.id:', user.id)
     return NextResponse.json({ error: 'Forbidden: account does not belong to this user' }, { status: 403 })
   }
 
-  console.log('Inserting to account_id:', accountId)
+  console.log('[upload] account_id:', accountId, '| parsed trades:', trades.length)
+  console.log('[upload] sample tickets:', trades.slice(0, 3).map(t => t.ticket))
 
   // Google Sheets + Notion
   const [tradesAdded, journalPagesCreated] = await Promise.all([
@@ -165,8 +170,7 @@ export async function POST(req: NextRequest) {
     createDailyPages(trades),
   ])
 
-  // Supabase: upsert trading_history
-  // Bug 2 fix: onConflict uses (account_id, ticket) so duplicates are per-account only
+  // Upsert trading_history — conflict on (account_id, ticket) so duplicates are per-account
   const rows = trades.map(t => ({
     account_id:   accountId,
     ticket:       t.ticket,
@@ -188,16 +192,19 @@ export async function POST(req: NextRequest) {
     duration_min: Math.round(t.durationSeconds / 60),
   }))
 
+  console.log('[upload] upserting', rows.length, 'rows to trading_history, account_id:', accountId)
+
   const { error: sbError, data: sbData } = await supabase
     .from('trading_history')
     .upsert(rows, { onConflict: 'account_id,ticket', ignoreDuplicates: true })
     .select('ticket')
 
-  if (sbError) console.error('Supabase upsert error:', sbError.message)
+  console.log('[upload] upsert error:', sbError?.message ?? null)
+  console.log('[upload] upsert returned rows:', sbData?.length ?? 0, '| sample:', sbData?.slice(0, 3).map(r => r.ticket) ?? [])
 
   const supabaseInserted = sbData?.length ?? 0
   const duplicatesSkipped = trades.length - supabaseInserted
-  console.log(`Upsert result: ${supabaseInserted} inserted, ${duplicatesSkipped} duplicates skipped`)
+  console.log(`[upload] ${supabaseInserted} giao dịch mới, ${duplicatesSkipped} trùng bỏ qua, insert vào account_id: ${accountId}`)
 
   const balance = account.current_balance ?? account.initial_balance ?? 0
 
@@ -206,7 +213,7 @@ export async function POST(req: NextRequest) {
   const violations = await runRuleEngine(parsedTrades, accountId, balance)
   const violationsSaved = await saveViolations(violations, accountId)
 
-  console.log(`Rule engine: ${violations.length} violations found, ${violationsSaved} saved`)
+  console.log(`[upload] rule engine: ${violations.length} violations found, ${violationsSaved} saved`)
 
   return NextResponse.json({
     tradesAdded,

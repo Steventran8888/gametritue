@@ -26,42 +26,94 @@ function parseCSVLine(line: string): string[] {
   return fields
 }
 
-function parseCSV(csv: string): Trade[] {
+function parseCSVRaw(csv: string): { headers: string[], rows: string[][] } {
   const lines = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n')
-  if (lines.length < 2) return []
-  return lines
-    .slice(1)
-    .map(line => parseCSVLine(line))
-    .filter(fields => fields.length >= 13 && fields[0] !== '')
-    .map(fields => ({
-      ticket:          fields[0] ?? '',
-      openTime:        fields[1] ?? '',
-      type:            fields[2] ?? '',
-      volume:          parseFloat(fields[3]  ?? '0') || 0,
-      symbol:          fields[4] ?? '',
-      openPrice:       parseFloat(fields[5]  ?? '0') || 0,
-      sl:              parseFloat(fields[6]  ?? '0') || 0,
-      tp:              parseFloat(fields[7]  ?? '0') || 0,
-      closeTime:       fields[8] ?? '',
-      closePrice:      parseFloat(fields[9]  ?? '0') || 0,
-      swap:            parseFloat(fields[10] ?? '0') || 0,
-      commission:      parseFloat(fields[11] ?? '0') || 0,
-      profit:          parseFloat(fields[12] ?? '0') || 0,
-      pips:            parseFloat(fields[13] ?? '0') || 0,
-      durationSeconds: parseFloat(fields[14] ?? '0') || 0,
-    }))
+  if (lines.length < 2) return { headers: [], rows: [] }
+  const headers = parseCSVLine(lines[0] ?? '').map(h => h.toLowerCase().trim())
+  const rows = lines.slice(1).map(line => parseCSVLine(line)).filter(fields => fields.length >= 4 && fields[0] !== '')
+  return { headers, rows }
+}
+
+function detectBroker(headers: string[], firstRow: string[]): 'ftmo' | 'exness' | 'unknown' {
+  const headerStr = headers.join(',')
+  if (headerStr.includes('pips') && firstRow.some(f => /\d{4}\.\d{2}\.\d{2}/.test(f))) return 'ftmo'
+  if (firstRow.some(f => /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(f))) return 'exness'
+  if (headerStr.includes('open time') && headerStr.includes('close time')) return 'ftmo'
+  return 'unknown'
+}
+
+function parseCSVFTMO(rows: string[][]): Trade[] {
+  return rows.filter(fields => fields.length >= 13 && fields[0] !== '').map(fields => ({
+    ticket:          fields[0] ?? '',
+    openTime:        fields[1] ?? '',
+    type:            fields[2] ?? '',
+    volume:          parseFloat(fields[3]  ?? '0') || 0,
+    symbol:          fields[4] ?? '',
+    openPrice:       parseFloat(fields[5]  ?? '0') || 0,
+    sl:              parseFloat(fields[6]  ?? '0') || 0,
+    tp:              parseFloat(fields[7]  ?? '0') || 0,
+    closeTime:       fields[8] ?? '',
+    closePrice:      parseFloat(fields[9]  ?? '0') || 0,
+    swap:            parseFloat(fields[10] ?? '0') || 0,
+    commission:      parseFloat(fields[11] ?? '0') || 0,
+    profit:          parseFloat(fields[12] ?? '0') || 0,
+    pips:            parseFloat(fields[13] ?? '0') || 0,
+    durationSeconds: parseFloat(fields[14] ?? '0') || 0,
+  }))
+}
+
+function parseCSVExness(headers: string[], rows: string[][]): Trade[] {
+  const col = (name: string) => headers.findIndex(x => x.includes(name))
+  const iTicket    = col('ticket') >= 0 ? col('ticket') : col('order')
+  const iOpenTime  = col('open time') >= 0 ? col('open time') : col('time')
+  const iType      = col('type') >= 0 ? col('type') : col('direction')
+  const iVolume    = col('volume') >= 0 ? col('volume') : col('lots')
+  const iSymbol    = col('symbol') >= 0 ? col('symbol') : col('instrument')
+  const iOpenPrice = col('open price') >= 0 ? col('open price') : col('price')
+  const iSL        = col('s/l') >= 0 ? col('s/l') : col('sl')
+  const iTP        = col('t/p') >= 0 ? col('t/p') : col('tp')
+  const iCloseTime = col('close time')
+  const iClosePrc  = col('close price')
+  const iSwap      = col('swap')
+  const iComm      = col('commission') >= 0 ? col('commission') : col('fee')
+  const iProfit    = col('profit') >= 0 ? col('profit') : col('p&l')
+  const iPips      = col('pips')
+
+  return rows.filter(fields => fields.length >= 4 && (fields[iTicket] ?? '') !== '').map(fields => ({
+    ticket:          fields[iTicket]    ?? '',
+    openTime:        fields[iOpenTime]  ?? '',
+    type:            fields[iType]      ?? '',
+    volume:          parseFloat(fields[iVolume]    ?? '0') || 0,
+    symbol:          fields[iSymbol]    ?? '',
+    openPrice:       parseFloat(fields[iOpenPrice] ?? '0') || 0,
+    sl:              parseFloat(fields[iSL]        ?? '0') || 0,
+    tp:              parseFloat(fields[iTP]        ?? '0') || 0,
+    closeTime:       fields[iCloseTime] ?? '',
+    closePrice:      parseFloat(fields[iClosePrc]  ?? '0') || 0,
+    swap:            parseFloat(fields[iSwap]      ?? '0') || 0,
+    commission:      parseFloat(fields[iComm]      ?? '0') || 0,
+    profit:          parseFloat(fields[iProfit]    ?? '0') || 0,
+    pips:            parseFloat(fields[iPips]      ?? '0') || 0,
+    durationSeconds: 0,
+  }))
 }
 
 // ── Derived field helpers ─────────────────────────────────────────
 
-function ftmoToISO(t: string): string {
-  const [date = '', time = '00:00:00'] = t.split(' ')
-  return `${date.replace(/\./g, '-')}T${time}Z`
+function parseDateTime(t: string): string {
+  if (!t) return new Date().toISOString()
+  if (/\d{4}\.\d{2}\.\d{2}/.test(t)) {
+    const [date, time = '00:00:00'] = t.split(' ')
+    return `${date!.replace(/\./g, '-')}T${time}Z`
+  }
+  if (/\d{4}-\d{2}-\d{2}T/.test(t)) return t
+  return new Date(t).toISOString()
 }
 
 function getSession(openTime: string): string {
-  const timePart = openTime.split(' ')[1] ?? '00:00:00'
-  const utcHour = parseInt(timePart.split(':')[0] ?? '0', 10)
+  const utcHour = openTime.includes('T')
+    ? parseInt(openTime.split('T')[1]?.split(':')[0] ?? '0', 10)
+    : parseInt(openTime.split(' ')[1]?.split(':')[0] ?? '0', 10)
   const gmt7Hour = (utcHour + 7) % 24
   if (gmt7Hour < 9)  return 'Asian'
   if (gmt7Hour < 15) return 'European'
@@ -130,9 +182,9 @@ export async function POST(req: NextRequest) {
   }
 
   const csvText = await file.text()
-  const trades  = parseCSV(csvText)
+  const { headers, rows: csvRows } = parseCSVRaw(csvText)
 
-  if (trades.length === 0) {
+  if (csvRows.length === 0) {
     return NextResponse.json({ error: 'No valid trades found in CSV' }, { status: 400 })
   }
 
@@ -147,7 +199,7 @@ export async function POST(req: NextRequest) {
 
   const { data: account, error: accError } = await supabase
     .from('trading_accounts')
-    .select('id, owner_id, initial_balance, current_balance')
+    .select('id, owner_id, initial_balance, current_balance, broker')
     .eq('id', accountId)
     .single()
 
@@ -160,6 +212,24 @@ export async function POST(req: NextRequest) {
     console.error('[upload] 403 — account.owner_id:', account.owner_id, '!== user.id:', user.id)
     return NextResponse.json({ error: 'Forbidden: account does not belong to this user' }, { status: 403 })
   }
+
+  // Detect broker from CSV and validate against account
+  const firstRow = csvRows[0] ?? []
+  const detectedBroker = detectBroker(headers, firstRow)
+  console.log('[upload] detected broker:', detectedBroker, '| account broker:', account.broker)
+
+  if (detectedBroker !== 'unknown' && account.broker?.toLowerCase() !== detectedBroker) {
+    return NextResponse.json({
+      error: 'broker_mismatch',
+      message: `File có vẻ là dữ liệu ${detectedBroker.toUpperCase()} nhưng account đang chọn là ${account.broker}. Vui lòng chọn đúng account trước khi upload.`,
+      detected_broker: detectedBroker,
+      account_broker: account.broker,
+    }, { status: 422 })
+  }
+
+  const trades = detectedBroker === 'exness'
+    ? parseCSVExness(headers, csvRows)
+    : parseCSVFTMO(csvRows)
 
   console.log('[upload] account_id:', accountId, '| parsed trades:', trades.length)
   console.log('[upload] sample tickets:', trades.slice(0, 3).map(t => t.ticket))
@@ -198,8 +268,8 @@ export async function POST(req: NextRequest) {
     const rows = newTrades.map(t => ({
       account_id:   accountId,
       ticket:       t.ticket,
-      open_time:    ftmoToISO(t.openTime),
-      close_time:   ftmoToISO(t.closeTime),
+      open_time:    parseDateTime(t.openTime),
+      close_time:   parseDateTime(t.closeTime),
       type:         t.type,
       symbol:       t.symbol,
       volume:       parseFloat(String(t.volume)),

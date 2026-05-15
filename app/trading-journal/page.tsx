@@ -821,6 +821,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   const [showAddModal, setShowAddModal] = useState(false)
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
   const [showAccountSettings, setShowAccountSettings] = useState(false)
+  const [accountSelectorHighlight, setAccountSelectorHighlight] = useState(false)
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false)
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -1203,6 +1204,13 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         body: formData,
       })
       if (res.status === 401) { setError('Phiên đăng nhập hết hạn — vui lòng tải lại trang'); return }
+      if (res.status === 422) {
+        const data = await res.json()
+        setError(data.message ?? 'File không khớp với account đang chọn')
+        setAccountSelectorHighlight(true)
+        setTimeout(() => setAccountSelectorHighlight(false), 3000)
+        return
+      }
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? 'Upload failed')
@@ -1309,7 +1317,9 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               <button
                 onClick={() => setShowAccountDropdown(v => !v)}
                 disabled={loadingAccounts}
-                className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-700 hover:border-gray-500 bg-gray-800 transition w-full min-w-0 disabled:opacity-50"
+                className={`flex items-center gap-2 px-3 py-2 rounded-full border hover:border-gray-500 bg-gray-800 transition w-full min-w-0 disabled:opacity-50 ${
+                  accountSelectorHighlight ? 'border-orange-500 ring-2 ring-orange-500/30' : 'border-gray-700'
+                }`}
               >
                 <div style={{
                   width: 22, height: 22, borderRadius: '50%', background: '#5c35d4', flexShrink: 0,

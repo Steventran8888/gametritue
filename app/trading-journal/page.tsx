@@ -1,6 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  Legend, ReferenceLine, ResponsiveContainer, Cell,
+} from 'recharts'
 import { createClient as createAuthClient } from '../lib/supabase'
 import {
   ACCOUNT_TYPE_PRESETS,
@@ -811,6 +815,185 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
   )
 }
 
+// ── Performance helpers ───────────────────────────────────────────
+
+function getWeekKey(isoDate: string): string {
+  const d = new Date(isoDate)
+  const day = d.getUTCDay()
+  d.setUTCDate(d.getUTCDate() + (day === 0 ? -6 : 1 - day))
+  return d.toISOString().substring(0, 10)
+}
+function weekLabel(weekKey: string): string {
+  const d = new Date(weekKey + 'T00:00:00Z')
+  return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`
+}
+
+type WeekRow = {
+  label: string; pnl: number; trades: number; wins: number
+  Overtrading: number; Session: number; Risk: number
+  Hold: number; Behavior: number; Other: number
+}
+
+function categorizeViolation(code: string): keyof WeekRow {
+  const c = (code ?? '').toUpperCase()
+  if (c.includes('OVERTRAD')) return 'Overtrading'
+  if (c.includes('SESSION'))  return 'Session'
+  if (c.includes('RISK'))     return 'Risk'
+  if (c.includes('HOLD'))     return 'Hold'
+  if (c.includes('REVENGE') || c.includes('FOMO')) return 'Behavior'
+  return 'Other'
+}
+
+function buildWeeklyData(trades: TradeHistoryRow[], violations: ViolationWithRule[]): WeekRow[] {
+  const weeks = new Map<string, WeekRow>()
+  const ticketToWeek = new Map<string, string>()
+
+  for (const t of trades) {
+    const key = getWeekKey(t.close_time)
+    ticketToWeek.set(t.ticket, key)
+    if (!weeks.has(key)) weeks.set(key, { label: weekLabel(key), pnl: 0, trades: 0, wins: 0, Overtrading: 0, Session: 0, Risk: 0, Hold: 0, Behavior: 0, Other: 0 })
+    const w = weeks.get(key)!
+    w.pnl += (t.profit ?? 0) + (t.commission ?? 0)
+    w.trades++
+    if ((t.profit ?? 0) > 0) w.wins++
+  }
+
+  for (const v of violations) {
+    const key = ticketToWeek.get(v.ticket)
+    if (!key || !weeks.has(key)) continue
+    const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
+    const code = rule?.code || v.rule_id
+    const cat = categorizeViolation(code)
+    const w = weeks.get(key)!
+    ;(w[cat] as number)++
+  }
+
+  return Array.from(weeks.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v)
+}
+
+function computeSummary(data: WeekRow[]) {
+  if (data.length < 4) return null
+  const last4 = data.slice(-4)
+  const prev4 = data.slice(-8, -4)
+  if (prev4.length === 0) return null
+
+  const totalViol = (rows: WeekRow[]) => rows.reduce((s,w) => s + w.Overtrading + w.Session + w.Risk + w.Hold + w.Behavior + w.Other, 0)
+  const totalTrades = (rows: WeekRow[]) => rows.reduce((s,w) => s + w.trades, 0)
+  const avgVR = (rows: WeekRow[]) => { const t = totalTrades(rows); return t > 0 ? totalViol(rows) / t : 0 }
+  const avgWR = (rows: WeekRow[]) => { const t = totalTrades(rows); const w = rows.reduce((s,r) => s + r.wins, 0); return t > 0 ? (w/t)*100 : 0 }
+  const avgPnl = (rows: WeekRow[]) => rows.reduce((s,w) => s + w.pnl, 0) / rows.length
+  const avgT   = (rows: WeekRow[]) => totalTrades(rows) / rows.length
+
+  const l4vr = avgVR(last4), p4vr = avgVR(prev4)
+  const l4wr = avgWR(last4), p4wr = avgWR(prev4)
+  const l4pnl = avgPnl(last4), p4pnl = avgPnl(prev4)
+  const l4t = avgT(last4), p4t = avgT(prev4)
+  const vrChange = p4vr > 0 ? ((l4vr - p4vr) / p4vr) * 100 : 0
+  const tChange  = p4t  > 0 ? ((l4t  - p4t)  / p4t)  * 100 : 0
+
+  let conclusion: string
+  if (vrChange < -10) {
+    conclusion = `✅ Kỷ luật đang cải thiện — tỉ lệ vi phạm giảm ${Math.abs(vrChange).toFixed(0)}% so với 4 tuần trước`
+  } else if (vrChange > 10) {
+    conclusion = `⚠️ Cần chú ý — tỉ lệ vi phạm tăng ${vrChange.toFixed(0)}% dù số lệnh ${tChange > 0 ? 'tăng' : 'giảm'}`
+  } else {
+    conclusion = `➡️ Kỷ luật ổn định — tỉ lệ vi phạm duy trì ở mức ${l4vr.toFixed(2)} vi phạm/lệnh`
+  }
+
+  return { l4vr, p4vr, vrChange, l4wr, p4wr, l4pnl, p4pnl, l4t, p4t, tChange, conclusion }
+}
+
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: '#1e2535', border: '1px solid #334155',
+  borderRadius: 8, color: '#e2e8f0', fontSize: 12,
+}
+
+function PerformanceView({ tradeHistory, violations }: {
+  tradeHistory: TradeHistoryRow[]
+  violations: ViolationWithRule[]
+}) {
+  const data    = buildWeeklyData(tradeHistory, violations)
+  const summary = computeSummary(data)
+  const axisStyle = { fill: '#94a3b8', fontSize: 11 }
+
+  if (tradeHistory.length === 0) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center">
+        <p className="text-gray-500 text-sm">Chưa có dữ liệu giao dịch để phân tích</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Chart 1 — Vi phạm theo tuần */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <h3 className="text-white font-semibold text-sm mb-4">Vi phạm theo tuần</h3>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data} barSize={14} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+            <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="label" tick={axisStyle} axisLine={false} tickLine={false} />
+            <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+            <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 8 }} />
+            <Bar dataKey="Overtrading" stackId="v" fill="#ef4444" />
+            <Bar dataKey="Session"     stackId="v" fill="#f97316" />
+            <Bar dataKey="Risk"        stackId="v" fill="#eab308" />
+            <Bar dataKey="Hold"        stackId="v" fill="#22c55e" />
+            <Bar dataKey="Behavior"    stackId="v" fill="#3b82f6" />
+            <Bar dataKey="Other"       stackId="v" fill="#a855f7" radius={[3,3,0,0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Chart 2 — P&L theo tuần */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <h3 className="text-white font-semibold text-sm mb-4">P&amp;L theo tuần</h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={data} barSize={20} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
+            <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="label" tick={axisStyle} axisLine={false} tickLine={false} />
+            <YAxis tick={axisStyle} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} width={56} />
+            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v) => [`$${Number(v ?? 0).toFixed(2)}`, 'P&L']} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" />
+            <Bar dataKey="pnl" name="P&L" radius={[3,3,0,0]}>
+              {data.map((entry, i) => (
+                <Cell key={i} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Summary card */}
+      {summary && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
+          <h3 className="text-white font-semibold text-sm">📊 Tổng kết xu hướng</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {([
+              { label: 'Lệnh/tuần',    curr: summary.l4t.toFixed(1),   prev: summary.p4t.toFixed(1),   change: summary.tChange },
+              { label: 'Vi phạm/lệnh', curr: summary.l4vr.toFixed(2),  prev: summary.p4vr.toFixed(2),  change: -summary.vrChange },
+              { label: 'Win rate',     curr: `${summary.l4wr.toFixed(1)}%`, prev: `${summary.p4wr.toFixed(1)}%`, change: summary.l4wr - summary.p4wr },
+              { label: 'P&L/tuần',    curr: `$${summary.l4pnl.toFixed(0)}`, prev: `$${summary.p4pnl.toFixed(0)}`, change: summary.l4pnl - summary.p4pnl },
+            ] as { label: string; curr: string; prev: string; change: number }[]).map(item => (
+              <div key={item.label} className="bg-gray-800 rounded-xl p-3">
+                <p className="text-gray-500 text-xs mb-1">{item.label}</p>
+                <p className="text-white font-bold text-lg leading-none">{item.curr}</p>
+                <p className={`text-xs mt-1.5 ${item.change > 0 ? 'text-green-400' : item.change < 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                  {item.change > 0 ? '↑' : item.change < 0 ? '↓' : '→'} vs {item.prev}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-sm text-gray-300 bg-gray-800 rounded-xl px-4 py-3 leading-relaxed">
+            {summary.conclusion}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Dashboard ────────────────────────────────────────────────────
 
 function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => void }) {
@@ -822,6 +1005,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
   const [showAccountSettings, setShowAccountSettings] = useState(false)
   const [accountSelectorHighlight, setAccountSelectorHighlight] = useState(false)
+  const [activeView, setActiveView] = useState<'timeline' | 'performance'>('timeline')
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false)
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -1408,18 +1592,23 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               📤 Upload CSV
             </button>
             <button
-              onClick={() => { if (selectedId) setJournalPanel(getDateKey(new Date().toISOString())) }}
+              onClick={() => {
+                setActiveView('timeline')
+                if (selectedId) setJournalPanel(getDateKey(new Date().toISOString()))
+              }}
               disabled={!selectedId}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition whitespace-nowrap flex-shrink-0 disabled:opacity-40 ${
-                journalPanel ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10' : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                journalPanel && activeView === 'timeline' ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10' : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300'
               }`}
             >
               📓 Daily Journal
             </button>
             <button
-              disabled
-              title="Sắp ra mắt"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border border-gray-700 text-gray-600 opacity-40 cursor-not-allowed whitespace-nowrap flex-shrink-0"
+              onClick={() => setActiveView(v => v === 'performance' ? 'timeline' : 'performance')}
+              disabled={!selectedId}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition whitespace-nowrap flex-shrink-0 disabled:opacity-40 ${
+                activeView === 'performance' ? 'border-violet-500 text-violet-300 bg-violet-500/10' : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+              }`}
             >
               📊 Performance
             </button>
@@ -1447,7 +1636,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
           )}
 
           {/* Account stats strip */}
-          {selectedAccount && (
+          {selectedAccount && activeView === 'timeline' && (
             <div className="relative pt-3 border-t border-gray-800">
               <div className="flex flex-wrap items-center gap-0 text-xs divide-x divide-gray-800">
                 {statsLoading ? (
@@ -1527,8 +1716,13 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         {/* Upload result summary + violations (shown after modal closes) */}
         {result && !showUploadModal && <ResultPanel result={result} />}
 
+        {/* Performance view */}
+        {selectedAccount && activeView === 'performance' && (
+          <PerformanceView tradeHistory={tradeHistory} violations={violations} />
+        )}
+
         {/* Trade History — Timeline */}
-        {selectedAccount && (() => {
+        {selectedAccount && activeView === 'timeline' && (() => {
           const allDayGroups = buildDayGroups(tradeHistory, violations, journalEntries)
 
           // Apply filters

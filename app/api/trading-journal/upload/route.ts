@@ -35,12 +35,10 @@ function parseCSVRaw(csv: string): { headers: string[], rows: string[][] } {
 }
 
 function detectBroker(headers: string[], firstRow: string[]): 'ftmo' | 'exness' | 'unknown' {
-  const headerStr = headers.join(',')
-  if (headerStr.includes('pips') && firstRow.some(f => /\d{4}\.\d{2}\.\d{2}/.test(f))) return 'ftmo'
-  // Exness ISO with T, or space-separated without T
-  if (firstRow.some(f => /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(f))) return 'exness'
-  if (firstRow.some(f => /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(f))) return 'exness'
-  if (headerStr.includes('open time') && headerStr.includes('close time')) return 'ftmo'
+  const h = headers.join(',').toLowerCase()
+  if (h.includes('opening_time_utc') || h.includes('closing_time_utc') || h.includes('original_position_size')) return 'exness'
+  if (h.includes('pips') || h.includes('duration')) return 'ftmo'
+  if (firstRow.some(f => /^\d{4}\.\d{2}\.\d{2}/.test(f))) return 'ftmo'
   return 'unknown'
 }
 
@@ -64,40 +62,44 @@ function parseCSVFTMO(rows: string[][]): Trade[] {
   }))
 }
 
-function parseCSVExness(headers: string[], rows: string[][]): Trade[] {
-  const col = (name: string) => headers.findIndex(x => x.includes(name))
-  const iTicket    = col('ticket') >= 0 ? col('ticket') : col('order')
-  const iOpenTime  = col('open time') >= 0 ? col('open time') : col('time')
-  const iType      = col('type') >= 0 ? col('type') : col('direction')
-  const iVolume    = col('volume') >= 0 ? col('volume') : col('lots')
-  const iSymbol    = col('symbol') >= 0 ? col('symbol') : col('instrument')
-  const iOpenPrice = col('open price') >= 0 ? col('open price') : col('price')
-  const iSL        = col('s/l') >= 0 ? col('s/l') : col('sl')
-  const iTP        = col('t/p') >= 0 ? col('t/p') : col('tp')
-  const iCloseTime = col('close time')
-  const iClosePrc  = col('close price')
-  const iSwap      = col('swap')
-  const iComm      = col('commission') >= 0 ? col('commission') : col('fee')
-  const iProfit    = col('profit') >= 0 ? col('profit') : col('p&l')
-  const iPips      = col('pips')
+function parseCSVExness(headers: string[], lines: string[][]): Trade[] {
+  const h = headers.map(x => x.toLowerCase().trim())
 
-  return rows.filter(fields => fields.length >= 4 && (fields[iTicket] ?? '') !== '').map(fields => ({
-    ticket:          fields[iTicket]    ?? '',
-    openTime:        fields[iOpenTime]  ?? '',
-    type:            fields[iType]      ?? '',
-    volume:          parseFloat(fields[iVolume]    ?? '0') || 0,
-    symbol:          fields[iSymbol]    ?? '',
-    openPrice:       parseFloat(fields[iOpenPrice] ?? '0') || 0,
-    sl:              parseFloat(fields[iSL]        ?? '0') || 0,
-    tp:              parseFloat(fields[iTP]        ?? '0') || 0,
-    closeTime:       fields[iCloseTime] ?? '',
-    closePrice:      parseFloat(fields[iClosePrc]  ?? '0') || 0,
-    swap:            parseFloat(fields[iSwap]      ?? '0') || 0,
-    commission:      parseFloat(fields[iComm]      ?? '0') || 0,
-    profit:          parseFloat(fields[iProfit]    ?? '0') || 0,
-    pips:            parseFloat(fields[iPips]      ?? '0') || 0,
-    durationSeconds: 0,
-  }))
+  const iTicket     = h.indexOf('ticket')
+  const iOpenTime   = h.indexOf('opening_time_utc') >= 0 ? h.indexOf('opening_time_utc') : h.findIndex(x => x.includes('open') && x.includes('time'))
+  const iCloseTime  = h.indexOf('closing_time_utc') >= 0 ? h.indexOf('closing_time_utc') : h.findIndex(x => x.includes('clos') && x.includes('time'))
+  const iType       = h.indexOf('type')
+  const iVolume     = h.indexOf('lots') >= 0 ? h.indexOf('lots') : h.indexOf('volume')
+  const iSymbol     = h.indexOf('symbol')
+  const iOpenPrice  = h.indexOf('opening_price') >= 0 ? h.indexOf('opening_price') : h.findIndex(x => x.includes('open') && x.includes('price'))
+  const iClosePrice = h.indexOf('closing_price') >= 0 ? h.indexOf('closing_price') : h.findIndex(x => x.includes('clos') && x.includes('price'))
+  const iSL         = h.indexOf('stop_loss') >= 0 ? h.indexOf('stop_loss') : h.indexOf('s/l')
+  const iTP         = h.indexOf('take_profit') >= 0 ? h.indexOf('take_profit') : h.indexOf('t/p')
+  const iCommission = h.indexOf('commission')
+  const iSwap       = h.indexOf('swap')
+  const iProfit     = h.indexOf('profit')
+
+  console.log('[upload] Exness column indices:', { iTicket, iOpenTime, iCloseTime, iType, iVolume, iSymbol, iOpenPrice, iClosePrice, iSL, iTP, iCommission, iSwap, iProfit })
+
+  return lines
+    .filter(fields => fields.length >= 3 && (fields[0] ?? '') !== '')
+    .map(fields => ({
+      ticket:          fields[iTicket]     ?? '',
+      openTime:        fields[iOpenTime]   ?? '',
+      closeTime:       fields[iCloseTime]  ?? '',
+      type:            fields[iType]       ?? '',
+      volume:          parseFloat(fields[iVolume]     ?? '0') || 0,
+      symbol:          fields[iSymbol]     ?? '',
+      openPrice:       parseFloat(fields[iOpenPrice]  ?? '0') || 0,
+      closePrice:      parseFloat(fields[iClosePrice] ?? '0') || 0,
+      sl:              parseFloat(fields[iSL]         ?? '0') || 0,
+      tp:              parseFloat(fields[iTP]         ?? '0') || 0,
+      commission:      parseFloat(fields[iCommission] ?? '0') || 0,
+      swap:            parseFloat(fields[iSwap]       ?? '0') || 0,
+      profit:          parseFloat(fields[iProfit]     ?? '0') || 0,
+      pips:            0,
+      durationSeconds: 0,
+    }))
 }
 
 // ── Derived field helpers ─────────────────────────────────────────
@@ -105,14 +107,16 @@ function parseCSVExness(headers: string[], rows: string[][]): Trade[] {
 function parseDateTime(t: string): string {
   if (!t) return new Date().toISOString()
   // FTMO: "2026.05.07 17:18:53"
-  if (/\d{4}\.\d{2}\.\d{2}/.test(t)) {
+  if (/^\d{4}\.\d{2}\.\d{2}/.test(t)) {
     const [date, time = '00:00:00'] = t.split(' ')
     return `${date!.replace(/\./g, '-')}T${time}Z`
   }
-  // ISO with T already
-  if (/\d{4}-\d{2}-\d{2}T/.test(t)) return t
-  // Exness: "2026-04-08 12:38:29" (space instead of T, no Z)
-  if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(t)) return t.replace(' ', 'T') + 'Z'
+  // Exness: "2026-05-07T17:18:53" (no Z)
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(t)) return t + 'Z'
+  // Already valid ISO (has Z or offset)
+  if (t.endsWith('Z') || t.includes('+')) return t
+  // Exness space-separated: "2026-04-08 12:38:29"
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(t)) return t.replace(' ', 'T') + 'Z'
   return new Date(t).toISOString()
 }
 

@@ -37,7 +37,9 @@ function parseCSVRaw(csv: string): { headers: string[], rows: string[][] } {
 function detectBroker(headers: string[], firstRow: string[]): 'ftmo' | 'exness' | 'unknown' {
   const headerStr = headers.join(',')
   if (headerStr.includes('pips') && firstRow.some(f => /\d{4}\.\d{2}\.\d{2}/.test(f))) return 'ftmo'
+  // Exness ISO with T, or space-separated without T
   if (firstRow.some(f => /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(f))) return 'exness'
+  if (firstRow.some(f => /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(f))) return 'exness'
   if (headerStr.includes('open time') && headerStr.includes('close time')) return 'ftmo'
   return 'unknown'
 }
@@ -102,11 +104,15 @@ function parseCSVExness(headers: string[], rows: string[][]): Trade[] {
 
 function parseDateTime(t: string): string {
   if (!t) return new Date().toISOString()
+  // FTMO: "2026.05.07 17:18:53"
   if (/\d{4}\.\d{2}\.\d{2}/.test(t)) {
     const [date, time = '00:00:00'] = t.split(' ')
     return `${date!.replace(/\./g, '-')}T${time}Z`
   }
+  // ISO with T already
   if (/\d{4}-\d{2}-\d{2}T/.test(t)) return t
+  // Exness: "2026-04-08 12:38:29" (space instead of T, no Z)
+  if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(t)) return t.replace(' ', 'T') + 'Z'
   return new Date(t).toISOString()
 }
 
@@ -217,6 +223,8 @@ export async function POST(req: NextRequest) {
   const firstRow = csvRows[0] ?? []
   const detectedBroker = detectBroker(headers, firstRow)
   console.log('[upload] detected broker:', detectedBroker, '| account broker:', account.broker)
+  console.log('[upload] CSV headers:', JSON.stringify(headers))
+  console.log('[upload] CSV first data row:', JSON.stringify(firstRow))
 
   if (detectedBroker !== 'unknown' && account.broker?.toLowerCase() !== detectedBroker) {
     return NextResponse.json({

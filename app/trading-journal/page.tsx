@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ReferenceLine, ResponsiveContainer, Cell,
+  ComposedChart, BarChart, Bar, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
 import { createClient as createAuthClient } from '../lib/supabase'
 import {
@@ -817,6 +817,15 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
 
 // ── Performance helpers ───────────────────────────────────────────
 
+type Period = 'day' | 'week' | 'month'
+
+type PeriodRow = {
+  label: string; sortKey: string; pnl: number; trades: number; wins: number
+  Overtrading: number; Session: number; Risk: number
+  Hold: number; Behavior: number; Other: number
+  violPerTrade: number
+}
+
 function getWeekKey(isoDate: string): string {
   const d = new Date(isoDate)
   const day = d.getUTCDay()
@@ -828,13 +837,22 @@ function weekLabel(weekKey: string): string {
   return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`
 }
 
-type WeekRow = {
-  label: string; pnl: number; trades: number; wins: number
-  Overtrading: number; Session: number; Risk: number
-  Hold: number; Behavior: number; Other: number
+function getPeriodKey(isoDate: string, period: Period): string {
+  if (period === 'day')   return isoDate.substring(0, 10)
+  if (period === 'week')  return getWeekKey(isoDate)
+  return isoDate.substring(0, 7) // YYYY-MM
+}
+function getPeriodLabel(key: string, period: Period): string {
+  if (period === 'day') {
+    const d = new Date(key + 'T00:00:00Z')
+    return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`
+  }
+  if (period === 'week') return weekLabel(key)
+  const [year, month] = key.split('-')
+  return `T${parseInt(month ?? '1')}/${year}`
 }
 
-function categorizeViolation(code: string): keyof WeekRow {
+function categorizeViolation(code: string): keyof PeriodRow {
   const c = (code ?? '').toUpperCase()
   if (c.includes('OVERTRAD')) return 'Overtrading'
   if (c.includes('SESSION'))  return 'Session'
@@ -844,45 +862,59 @@ function categorizeViolation(code: string): keyof WeekRow {
   return 'Other'
 }
 
-function buildWeeklyData(trades: TradeHistoryRow[], violations: ViolationWithRule[]): WeekRow[] {
-  const weeks = new Map<string, WeekRow>()
-  const ticketToWeek = new Map<string, string>()
+function buildPeriodData(trades: TradeHistoryRow[], violations: ViolationWithRule[], period: Period = 'week'): PeriodRow[] {
+  const periods = new Map<string, PeriodRow>()
+  const ticketToPeriod = new Map<string, string>()
 
   for (const t of trades) {
-    const key = getWeekKey(t.close_time)
-    ticketToWeek.set(t.ticket, key)
-    if (!weeks.has(key)) weeks.set(key, { label: weekLabel(key), pnl: 0, trades: 0, wins: 0, Overtrading: 0, Session: 0, Risk: 0, Hold: 0, Behavior: 0, Other: 0 })
-    const w = weeks.get(key)!
+    const key = getPeriodKey(t.close_time, period)
+    ticketToPeriod.set(t.ticket, key)
+    if (!periods.has(key)) periods.set(key, {
+      label: getPeriodLabel(key, period), sortKey: key,
+      pnl: 0, trades: 0, wins: 0, violPerTrade: 0,
+      Overtrading: 0, Session: 0, Risk: 0, Hold: 0, Behavior: 0, Other: 0,
+    })
+    const w = periods.get(key)!
     w.pnl += (t.profit ?? 0) + (t.commission ?? 0)
     w.trades++
     if ((t.profit ?? 0) > 0) w.wins++
   }
 
   for (const v of violations) {
-    const key = ticketToWeek.get(v.ticket)
-    if (!key || !weeks.has(key)) continue
+    const key = ticketToPeriod.get(v.ticket)
+    if (!key || !periods.has(key)) continue
     const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
     const code = rule?.code || v.rule_id
     const cat = categorizeViolation(code)
-    const w = weeks.get(key)!
+    const w = periods.get(key)!
     ;(w[cat] as number)++
   }
 
-  return Array.from(weeks.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v)
+  return Array.from(periods.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,w]) => ({
+    ...w,
+    violPerTrade: w.trades > 0
+      ? parseFloat(((w.Overtrading + w.Session + w.Risk + w.Hold + w.Behavior + w.Other) / w.trades).toFixed(2))
+      : 0,
+  }))
 }
 
-function computeSummary(data: WeekRow[]) {
+// Keep alias for weekly used in summary
+function buildWeeklyData(trades: TradeHistoryRow[], violations: ViolationWithRule[]): PeriodRow[] {
+  return buildPeriodData(trades, violations, 'week')
+}
+
+function computeSummary(data: PeriodRow[]) {
   if (data.length < 4) return null
   const last4 = data.slice(-4)
   const prev4 = data.slice(-8, -4)
   if (prev4.length === 0) return null
 
-  const totalViol = (rows: WeekRow[]) => rows.reduce((s,w) => s + w.Overtrading + w.Session + w.Risk + w.Hold + w.Behavior + w.Other, 0)
-  const totalTrades = (rows: WeekRow[]) => rows.reduce((s,w) => s + w.trades, 0)
-  const avgVR = (rows: WeekRow[]) => { const t = totalTrades(rows); return t > 0 ? totalViol(rows) / t : 0 }
-  const avgWR = (rows: WeekRow[]) => { const t = totalTrades(rows); const w = rows.reduce((s,r) => s + r.wins, 0); return t > 0 ? (w/t)*100 : 0 }
-  const avgPnl = (rows: WeekRow[]) => rows.reduce((s,w) => s + w.pnl, 0) / rows.length
-  const avgT   = (rows: WeekRow[]) => totalTrades(rows) / rows.length
+  const totalViol  = (rows: PeriodRow[]) => rows.reduce((s,w) => s + w.Overtrading + w.Session + w.Risk + w.Hold + w.Behavior + w.Other, 0)
+  const totalTrades = (rows: PeriodRow[]) => rows.reduce((s,w) => s + w.trades, 0)
+  const avgVR  = (rows: PeriodRow[]) => { const t = totalTrades(rows); return t > 0 ? totalViol(rows) / t : 0 }
+  const avgWR  = (rows: PeriodRow[]) => { const t = totalTrades(rows); const w = rows.reduce((s,r) => s + r.wins, 0); return t > 0 ? (w/t)*100 : 0 }
+  const avgPnl = (rows: PeriodRow[]) => rows.reduce((s,w) => s + w.pnl, 0) / rows.length
+  const avgT   = (rows: PeriodRow[]) => totalTrades(rows) / rows.length
 
   const l4vr = avgVR(last4), p4vr = avgVR(prev4)
   const l4wr = avgWR(last4), p4wr = avgWR(prev4)
@@ -892,13 +924,9 @@ function computeSummary(data: WeekRow[]) {
   const tChange  = p4t  > 0 ? ((l4t  - p4t)  / p4t)  * 100 : 0
 
   let conclusion: string
-  if (vrChange < -10) {
-    conclusion = `✅ Kỷ luật đang cải thiện — tỉ lệ vi phạm giảm ${Math.abs(vrChange).toFixed(0)}% so với 4 tuần trước`
-  } else if (vrChange > 10) {
-    conclusion = `⚠️ Cần chú ý — tỉ lệ vi phạm tăng ${vrChange.toFixed(0)}% dù số lệnh ${tChange > 0 ? 'tăng' : 'giảm'}`
-  } else {
-    conclusion = `➡️ Kỷ luật ổn định — tỉ lệ vi phạm duy trì ở mức ${l4vr.toFixed(2)} vi phạm/lệnh`
-  }
+  if (vrChange < -10)  conclusion = `✅ Kỷ luật đang cải thiện — tỉ lệ vi phạm giảm ${Math.abs(vrChange).toFixed(0)}% so với 4 ${data.length > 4 ? 'kỳ' : 'tuần'} trước`
+  else if (vrChange > 10) conclusion = `⚠️ Cần chú ý — tỉ lệ vi phạm tăng ${vrChange.toFixed(0)}% dù số lệnh ${tChange > 0 ? 'tăng' : 'giảm'}`
+  else conclusion = `➡️ Kỷ luật ổn định — tỉ lệ vi phạm duy trì ở mức ${l4vr.toFixed(2)} vi phạm/lệnh`
 
   return { l4vr, p4vr, vrChange, l4wr, p4wr, l4pnl, p4pnl, l4t, p4t, tChange, conclusion }
 }
@@ -908,33 +936,70 @@ const CHART_TOOLTIP_STYLE = {
   borderRadius: 8, color: '#e2e8f0', fontSize: 12,
 }
 
+const AXIS_STYLE = { fill: '#94a3b8', fontSize: 11 }
+
+// Custom tooltip for violation chart
+function ViolTooltip({ active, payload }: { active?: boolean; payload?: { payload: PeriodRow }[] }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0]?.payload
+  if (!d) return null
+  const totalViol = d.Overtrading + d.Session + d.Risk + d.Hold + d.Behavior + d.Other
+  const winRate = d.trades > 0 ? ((d.wins / d.trades) * 100).toFixed(1) : '—'
+  const cats = [
+    { k: 'Risk', v: d.Risk, c: '#eab308' }, { k: 'Hold', v: d.Hold, c: '#22c55e' },
+    { k: 'Session', v: d.Session, c: '#f97316' }, { k: 'Overtrading', v: d.Overtrading, c: '#ef4444' },
+    { k: 'Behavior', v: d.Behavior, c: '#3b82f6' }, { k: 'Other', v: d.Other, c: '#a855f7' },
+  ].filter(x => x.v > 0)
+  return (
+    <div style={{ ...CHART_TOOLTIP_STYLE, padding: '10px 14px', minWidth: 190 }}>
+      <p style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid #334155', paddingBottom: 4 }}>
+        {d.label}
+      </p>
+      <p style={{ color: '#fca5a5', marginBottom: cats.length ? 2 : 6 }}>Vi phạm: {totalViol} tổng</p>
+      {cats.map(x => (
+        <p key={x.k} style={{ color: x.c, paddingLeft: 10, fontSize: 11, marginBottom: 1 }}>• {x.k}: {x.v}</p>
+      ))}
+      <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6, fontSize: 11 }}>
+        <p style={{ color: '#94a3b8' }}>Số lệnh: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{d.trades}</span></p>
+        <p style={{ color: '#94a3b8' }}>Vi phạm/lệnh: <span style={{ color: '#fbbf24', fontWeight: 600 }}>{d.violPerTrade}</span></p>
+        <p style={{ color: '#94a3b8' }}>Win rate: <span style={{ color: '#e2e8f0' }}>{winRate}%</span></p>
+        <p style={{ color: '#94a3b8' }}>P&L: <span style={{ color: d.pnl >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{d.pnl >= 0 ? '+' : ''}${d.pnl.toFixed(2)}</span></p>
+      </div>
+    </div>
+  )
+}
+
+const PERIOD_LABELS: Record<Period, string> = { day: 'Ngày', week: 'Tuần', month: 'Tháng' }
+
 function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap }: {
   tradeHistory: TradeHistoryRow[]
   violations: ViolationWithRule[]
   customLabels: CustomLabel[]
   tradeLabelMap: Record<string, string[]>
 }) {
-  const data    = buildWeeklyData(tradeHistory, violations)
-  const summary = computeSummary(data)
+  const [period, setPeriod] = useState<Period>('week')
 
-  // Build weekly label data
-  const ticketToWeek = new Map(tradeHistory.map(t => [t.ticket, getWeekKey(t.close_time)]))
-  const weekLabelData = new Map<string, { label: string; positive: number; negative: number }>()
+  const data    = buildPeriodData(tradeHistory, violations, period)
+  const weekData = buildWeeklyData(tradeHistory, violations) // always weekly for summary
+  const summary = computeSummary(weekData)
+
+  // Build period label data (for custom labels chart)
+  const ticketToPeriod = new Map(tradeHistory.map(t => [t.ticket, getPeriodKey(t.close_time, period)]))
+  const periodLabelMap = new Map<string, { label: string; positive: number; negative: number }>()
   for (const [ticket, labelIds] of Object.entries(tradeLabelMap)) {
-    const weekKey = ticketToWeek.get(ticket)
-    if (!weekKey) continue
-    if (!weekLabelData.has(weekKey)) weekLabelData.set(weekKey, { label: weekLabel(weekKey), positive: 0, negative: 0 })
-    const w = weekLabelData.get(weekKey)!
+    const key = ticketToPeriod.get(ticket)
+    if (!key) continue
+    if (!periodLabelMap.has(key)) periodLabelMap.set(key, { label: getPeriodLabel(key, period), positive: 0, negative: 0 })
+    const w = periodLabelMap.get(key)!
     for (const lid of labelIds) {
       const lbl = customLabels.find(l => l.id === lid)
       if (lbl?.type === 'positive') w.positive++
       else if (lbl?.type === 'negative') w.negative++
     }
   }
-  const labelWeekData = Array.from(weekLabelData.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v)
-  const totalPos = labelWeekData.reduce((s,w) => s + w.positive, 0)
-  const totalNeg = labelWeekData.reduce((s,w) => s + w.negative, 0)
-  const axisStyle = { fill: '#94a3b8', fontSize: 11 }
+  const labelPeriodData = Array.from(periodLabelMap.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v)
+  const totalPos = labelPeriodData.reduce((s,w) => s + w.positive, 0)
+  const totalNeg = labelPeriodData.reduce((s,w) => s + w.negative, 0)
 
   if (tradeHistory.length === 0) {
     return (
@@ -946,34 +1011,58 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
 
   return (
     <div className="space-y-4">
-      {/* Chart 1 — Vi phạm theo tuần */}
+      {/* Chart 1 — Vi phạm + số lệnh + vi phạm/lệnh */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-        <h3 className="text-white font-semibold text-sm mb-4">Vi phạm theo tuần</h3>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={data} barSize={14} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white font-semibold text-sm">Vi phạm theo {PERIOD_LABELS[period].toLowerCase()}</h3>
+          <div className="flex gap-1">
+            {(['day','week','month'] as Period[]).map(p => (
+              <button key={p} onClick={() => setPeriod(p)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                  period === p ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}>
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={250}>
+          <ComposedChart data={data} barSize={Math.max(6, Math.min(18, Math.floor(600 / (data.length || 1) - 4)))} margin={{ top: 4, right: 48, left: -12, bottom: 0 }}>
             <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey="label" tick={axisStyle} axisLine={false} tickLine={false} />
-            <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
-            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-            <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 8 }} />
-            <Bar dataKey="Overtrading" stackId="v" fill="#ef4444" />
-            <Bar dataKey="Session"     stackId="v" fill="#f97316" />
-            <Bar dataKey="Risk"        stackId="v" fill="#eab308" />
-            <Bar dataKey="Hold"        stackId="v" fill="#22c55e" />
-            <Bar dataKey="Behavior"    stackId="v" fill="#3b82f6" />
-            <Bar dataKey="Other"       stackId="v" fill="#a855f7" radius={[3,3,0,0]} />
-          </BarChart>
+            <XAxis dataKey="label" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="left" tick={AXIS_STYLE} axisLine={false} tickLine={false} allowDecimals={false} />
+            <YAxis yAxisId="right" orientation="right" tick={AXIS_STYLE} axisLine={false} tickLine={false} allowDecimals={false} width={36} />
+            <Tooltip content={<ViolTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+            <Legend wrapperStyle={{ fontSize: 10, color: '#94a3b8', paddingTop: 8 }} />
+            {/* Stacked bars — violations (left axis) */}
+            <Bar yAxisId="left" dataKey="Overtrading" stackId="v" fill="#ef4444" name="Overtrading" />
+            <Bar yAxisId="left" dataKey="Session"     stackId="v" fill="#f97316" name="Session" />
+            <Bar yAxisId="left" dataKey="Risk"        stackId="v" fill="#eab308" name="Risk" />
+            <Bar yAxisId="left" dataKey="Hold"        stackId="v" fill="#22c55e" name="Hold" />
+            <Bar yAxisId="left" dataKey="Behavior"    stackId="v" fill="#3b82f6" name="Behavior" />
+            <Bar yAxisId="left" dataKey="Other"       stackId="v" fill="#a855f7" radius={[3,3,0,0]} name="Other" />
+            {/* Số lệnh — line, right axis */}
+            <Line yAxisId="right" dataKey="trades" name="Số lệnh" type="monotone"
+              stroke="rgba(255,255,255,0.5)" strokeWidth={2}
+              dot={{ fill: '#fff', r: 3, strokeWidth: 0 }}
+              activeDot={{ r: 4 }} />
+            {/* Vi phạm/lệnh — dashed yellow, right axis */}
+            <Line yAxisId="right" dataKey="violPerTrade" name="VP/lệnh" type="monotone"
+              stroke="#fbbf24" strokeWidth={1.5} strokeDasharray="5 3"
+              dot={{ fill: '#fbbf24', r: 2, strokeWidth: 0 }}
+              activeDot={{ r: 4 }} />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Chart 2 — P&L theo tuần */}
+      {/* Chart 2 — P&L */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-        <h3 className="text-white font-semibold text-sm mb-4">P&amp;L theo tuần</h3>
+        <h3 className="text-white font-semibold text-sm mb-4">P&amp;L theo {PERIOD_LABELS[period].toLowerCase()}</h3>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} barSize={20} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
             <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey="label" tick={axisStyle} axisLine={false} tickLine={false} />
-            <YAxis tick={axisStyle} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} width={56} />
+            <XAxis dataKey="label" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
+            <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} width={56} />
             <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v) => [`$${Number(v ?? 0).toFixed(2)}`, 'P&L']} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" />
             <Bar dataKey="pnl" name="P&L" radius={[3,3,0,0]}>
@@ -985,15 +1074,15 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
         </ResponsiveContainer>
       </div>
 
-      {/* Chart 3 — Custom labels by week */}
-      {labelWeekData.length > 0 && (
+      {/* Chart 3 — Custom labels */}
+      {labelPeriodData.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-          <h3 className="text-white font-semibold text-sm mb-4">🏷 Nhãn tùy chỉnh theo tuần</h3>
+          <h3 className="text-white font-semibold text-sm mb-4">🏷 Nhãn tùy chỉnh theo {PERIOD_LABELS[period].toLowerCase()}</h3>
           <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={labelWeekData} barSize={16} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+            <BarChart data={labelPeriodData} barSize={16} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
               <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <XAxis dataKey="label" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
+              <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
               <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 8 }} />
               <Bar dataKey="positive" name="Tích cực 👍" fill="#22c55e" radius={[3,3,0,0]} />

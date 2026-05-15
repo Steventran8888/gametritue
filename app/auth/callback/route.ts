@@ -3,8 +3,16 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
+
+  // Lấy domain thực từ headers
+  const host = request.headers.get('x-forwarded-host') ||
+               request.headers.get('host') ||
+               'gametritue.vercel.app'
+
+  const protocol = host.includes('localhost') ? 'http' : 'https'
+  const baseUrl = `${protocol}://${host}`
 
   if (code) {
     const cookieStore = await cookies()
@@ -25,8 +33,6 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  const next = searchParams.get('next') || '/'
-  const safePaths = ['/', '/game', '/trading-journal']
-  const redirectTo = safePaths.includes(next) ? next : '/'
-  return NextResponse.redirect(`${origin}${redirectTo}`)
+  // Redirect về '/' của đúng domain — middleware sẽ điều hướng tiếp
+  return NextResponse.redirect(`${baseUrl}/`)
 }

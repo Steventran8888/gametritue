@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSupabase } from '@/lib/supabaseServer'
+import { getServerSupabase, getServiceSupabase } from '@/lib/supabaseServer'
 import { appendTrades } from '@/lib/googleSheets'
 import { createDailyPages } from '@/lib/notionJournal'
 import { runRuleEngine, saveViolations, type ParsedTrade } from '@/lib/ruleEngine'
@@ -165,10 +165,10 @@ export async function POST(req: NextRequest) {
   console.log('[upload] sample tickets:', trades.slice(0, 3).map(t => t.ticket))
 
   // ── Step 1: pre-check duplicates scoped to THIS account ───────────
-  // (Do NOT rely solely on upsert ignoreDuplicates — PostgREST may return
-  //  null for sbData even when rows were inserted, making count unreliable)
+  // Use service role to bypass RLS — ownership already verified above
+  const serviceSupabase = getServiceSupabase()
   const incomingTickets = trades.map(t => t.ticket)
-  const { data: existing, error: existErr } = await supabase
+  const { data: existing, error: existErr } = await serviceSupabase
     .from('trading_history')
     .select('ticket')
     .eq('account_id', accountId)        // ← scoped to THIS account only
@@ -219,17 +219,17 @@ export async function POST(req: NextRequest) {
     console.log('[upload] inserting', rows.length, 'rows | account_id:', accountId)
     console.log('[upload] sample rows:', rows.slice(0, 2).map(r => ({ ticket: r.ticket, account_id: r.account_id, symbol: r.symbol })))
 
-    const { error: sbError, data: sbData } = await supabase
+    const { error: sbError, data: sbData } = await serviceSupabase
       .from('trading_history')
-      .upsert(rows, { onConflict: 'account_id,ticket', ignoreDuplicates: true })
+      .upsert(rows, { onConflict: 'account_id,ticket', ignoreDuplicates: false })
       .select('ticket')
 
     console.log('[upload] upsert error:', sbError?.message ?? null)
-    console.log('[upload] upsert sbData length:', sbData?.length ?? '(null — using pre-filter count)')
+    console.log('[upload] upsert sbData length:', sbData?.length ?? null)
 
-    // Use pre-filtered count (newTrades.length) because sbData may be null
-    // with ignoreDuplicates:true even on successful insert
-    supabaseInserted = newTrades.length
+    // Use actual DB count from sbData (service role returns full result)
+    supabaseInserted = sbData?.length ?? 0
+    console.log('[upload] actual inserted from DB:', supabaseInserted)
   }
 
   console.log(`[upload] FINAL: ${supabaseInserted} giao dịch mới, ${duplicatesSkipped} trùng bỏ qua, account_id: ${accountId}`)

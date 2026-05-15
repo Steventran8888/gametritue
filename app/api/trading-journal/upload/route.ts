@@ -164,47 +164,75 @@ export async function POST(req: NextRequest) {
   console.log('[upload] account_id:', accountId, '| parsed trades:', trades.length)
   console.log('[upload] sample tickets:', trades.slice(0, 3).map(t => t.ticket))
 
+  // ── Step 1: pre-check duplicates scoped to THIS account ───────────
+  // (Do NOT rely solely on upsert ignoreDuplicates — PostgREST may return
+  //  null for sbData even when rows were inserted, making count unreliable)
+  const incomingTickets = trades.map(t => t.ticket)
+  const { data: existing, error: existErr } = await supabase
+    .from('trading_history')
+    .select('ticket')
+    .eq('account_id', accountId)        // ← scoped to THIS account only
+    .in('ticket', incomingTickets)
+
+  console.log('[upload] existing tickets in account:', existing?.length ?? 0, '| error:', existErr?.message ?? null)
+  if (existing && existing.length > 0) {
+    console.log('[upload] existing sample:', existing.slice(0, 3).map(r => r.ticket))
+  }
+
+  const existingSet     = new Set(existing?.map(r => r.ticket) ?? [])
+  const newTrades       = trades.filter(t => !existingSet.has(t.ticket))
+  const duplicatesSkipped = trades.length - newTrades.length
+
+  console.log(`[upload] ${newTrades.length} new trades to insert, ${duplicatesSkipped} duplicates skipped`)
+
   // Google Sheets + Notion
   const [tradesAdded, journalPagesCreated] = await Promise.all([
     appendTrades(trades),
     createDailyPages(trades),
   ])
 
-  // Upsert trading_history — conflict on (account_id, ticket) so duplicates are per-account
-  const rows = trades.map(t => ({
-    account_id:   accountId,
-    ticket:       t.ticket,
-    open_time:    ftmoToISO(t.openTime),
-    close_time:   ftmoToISO(t.closeTime),
-    type:         t.type,
-    symbol:       t.symbol,
-    volume:       parseFloat(String(t.volume)),
-    open_price:   parseFloat(String(t.openPrice)),
-    close_price:  parseFloat(String(t.closePrice)),
-    sl:           parseFloat(String(t.sl)),
-    tp:           parseFloat(String(t.tp)),
-    pips:         parseFloat(String(t.pips)),
-    profit:       parseFloat(String(t.profit)),
-    commission:   parseFloat(String(t.commission)),
-    swap:         parseFloat(String(t.swap)) || 0,
-    session:      getSession(t.openTime),
-    rr_ratio:     parseFloat(String(getRR(t.type, t.openPrice, t.closePrice, t.sl) ?? 0)),
-    duration_min: Math.round(t.durationSeconds / 60),
-  }))
+  // ── Step 2: insert only new trades ───────────────────────────────
+  let supabaseInserted = 0
 
-  console.log('[upload] upserting', rows.length, 'rows to trading_history, account_id:', accountId)
+  if (newTrades.length > 0) {
+    const rows = newTrades.map(t => ({
+      account_id:   accountId,
+      ticket:       t.ticket,
+      open_time:    ftmoToISO(t.openTime),
+      close_time:   ftmoToISO(t.closeTime),
+      type:         t.type,
+      symbol:       t.symbol,
+      volume:       parseFloat(String(t.volume)),
+      open_price:   parseFloat(String(t.openPrice)),
+      close_price:  parseFloat(String(t.closePrice)),
+      sl:           parseFloat(String(t.sl)),
+      tp:           parseFloat(String(t.tp)),
+      pips:         parseFloat(String(t.pips)),
+      profit:       parseFloat(String(t.profit)),
+      commission:   parseFloat(String(t.commission)),
+      swap:         parseFloat(String(t.swap)) || 0,
+      session:      getSession(t.openTime),
+      rr_ratio:     parseFloat(String(getRR(t.type, t.openPrice, t.closePrice, t.sl) ?? 0)),
+      duration_min: Math.round(t.durationSeconds / 60),
+    }))
 
-  const { error: sbError, data: sbData } = await supabase
-    .from('trading_history')
-    .upsert(rows, { onConflict: 'account_id,ticket', ignoreDuplicates: true })
-    .select('ticket')
+    console.log('[upload] inserting', rows.length, 'rows | account_id:', accountId)
+    console.log('[upload] sample rows:', rows.slice(0, 2).map(r => ({ ticket: r.ticket, account_id: r.account_id, symbol: r.symbol })))
 
-  console.log('[upload] upsert error:', sbError?.message ?? null)
-  console.log('[upload] upsert returned rows:', sbData?.length ?? 0, '| sample:', sbData?.slice(0, 3).map(r => r.ticket) ?? [])
+    const { error: sbError, data: sbData } = await supabase
+      .from('trading_history')
+      .upsert(rows, { onConflict: 'account_id,ticket', ignoreDuplicates: true })
+      .select('ticket')
 
-  const supabaseInserted = sbData?.length ?? 0
-  const duplicatesSkipped = trades.length - supabaseInserted
-  console.log(`[upload] ${supabaseInserted} giao dịch mới, ${duplicatesSkipped} trùng bỏ qua, insert vào account_id: ${accountId}`)
+    console.log('[upload] upsert error:', sbError?.message ?? null)
+    console.log('[upload] upsert sbData length:', sbData?.length ?? '(null — using pre-filter count)')
+
+    // Use pre-filtered count (newTrades.length) because sbData may be null
+    // with ignoreDuplicates:true even on successful insert
+    supabaseInserted = newTrades.length
+  }
+
+  console.log(`[upload] FINAL: ${supabaseInserted} giao dịch mới, ${duplicatesSkipped} trùng bỏ qua, account_id: ${accountId}`)
 
   const balance = account.current_balance ?? account.initial_balance ?? 0
 

@@ -136,15 +136,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No valid trades found in CSV' }, { status: 400 })
   }
 
-  // Google Sheets + Notion (unchanged)
+  const supabase = await getServerSupabase()
+
+  // Bug 1 fix: verify account belongs to current user
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { data: account, error: accError } = await supabase
+    .from('trading_accounts')
+    .select('id, owner_id, initial_balance, current_balance')
+    .eq('id', accountId)
+    .single()
+
+  if (accError || !account) {
+    return NextResponse.json({ error: 'Account not found' }, { status: 404 })
+  }
+  if (account.owner_id !== user.id) {
+    return NextResponse.json({ error: 'Forbidden: account does not belong to this user' }, { status: 403 })
+  }
+
+  console.log('Inserting to account_id:', accountId)
+
+  // Google Sheets + Notion
   const [tradesAdded, journalPagesCreated] = await Promise.all([
     appendTrades(trades),
     createDailyPages(trades),
   ])
 
-  const supabase = await getServerSupabase()
-
   // Supabase: upsert trading_history
+  // Bug 2 fix: onConflict uses (account_id, ticket) so duplicates are per-account only
   const rows = trades.map(t => ({
     account_id:   accountId,
     ticket:       t.ticket,
@@ -173,14 +195,11 @@ export async function POST(req: NextRequest) {
 
   if (sbError) console.error('Supabase upsert error:', sbError.message)
 
-  // Fetch account for balance info
-  const { data: account } = await supabase
-    .from('trading_accounts')
-    .select('initial_balance, current_balance')
-    .eq('id', accountId)
-    .single()
+  const supabaseInserted = sbData?.length ?? 0
+  const duplicatesSkipped = trades.length - supabaseInserted
+  console.log(`Upsert result: ${supabaseInserted} inserted, ${duplicatesSkipped} duplicates skipped`)
 
-  const balance = account?.current_balance ?? account?.initial_balance ?? 0
+  const balance = account.current_balance ?? account.initial_balance ?? 0
 
   // Rule engine
   const parsedTrades = trades.map(toParsedTrade)
@@ -193,7 +212,8 @@ export async function POST(req: NextRequest) {
     tradesAdded,
     journalPagesCreated,
     totalParsed:        trades.length,
-    supabase_inserted:  sbData?.length ?? 0,
+    supabase_inserted:  supabaseInserted,
+    duplicates_skipped: duplicatesSkipped,
     violations_found:   violations.length,
     violations_by_severity: {
       critical: violations.filter(v => v.severity === 'critical').length,
@@ -201,7 +221,7 @@ export async function POST(req: NextRequest) {
     },
     violations: violations.map(v => ({
       ticket:    v.ticket,
-      code: v.code,
+      code:      v.code,
       severity:  v.severity,
       auto_note: v.auto_note,
     })),

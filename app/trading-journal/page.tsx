@@ -104,6 +104,7 @@ interface UploadResult {
   journalPagesCreated: number
   totalParsed: number
   supabase_inserted: number
+  duplicates_skipped: number
   violations_found: number
   violations_by_severity: { critical: number; warning: number }
   violations: ViolationRow[]
@@ -569,11 +570,12 @@ function ResultPanel({ result }: { result: UploadResult }) {
   return (
     <div className="space-y-2">
       <p className="text-sm text-gray-400">
-        <span className="text-green-400 font-semibold">✓ {result.tradesAdded} trades</span>
-        {' → Sheets · Notion · Supabase '}
-        <span className="text-gray-600">|</span>
+        <span className="text-green-400 font-semibold">✅ {result.supabase_inserted} trades synced</span>
+        {result.duplicates_skipped > 0 && (
+          <span className="text-yellow-500 ml-2">· ⚠️ {result.duplicates_skipped} trùng đã bỏ qua</span>
+        )}
         {' '}
-        <span className="text-gray-500">{result.totalParsed - result.tradesAdded} duplicates skipped</span>
+        <span className="text-gray-600">→ Sheets · Notion · Supabase</span>
       </p>
 
       {(result.violations_found ?? 0) === 0 ? (
@@ -1100,6 +1102,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
     void loadJournalEntries(id)
     // Load trades then sync daily stats into journal entries
     ;(async () => {
+      setTradeHistory([]) // clear stale data from previous account immediately
       setTradeHistoryLoading(true)
       try {
         const { data, error } = await supabase
@@ -1220,9 +1223,14 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         setTimeout(() => {
           setShowUploadModal(false)
           setUploadSuccess(false)
-          const n = (data as UploadResult).tradesAdded
-          setUploadToast(`✓ ${n} trade${n !== 1 ? 's' : ''} synced`)
-          setTimeout(() => setUploadToast(null), 3000)
+          const r = data as UploadResult
+          const inserted = r.supabase_inserted
+          const dup = r.duplicates_skipped ?? (r.totalParsed - inserted)
+          const accName = selectedAccount?.display_name ?? selectedAccount?.account_code ?? 'account'
+          const toast = `✅ ${inserted} giao dịch đã sync vào ${accName}` +
+            (dup > 0 ? ` · ⚠️ ${dup} trùng đã bỏ qua` : '')
+          setUploadToast(toast)
+          setTimeout(() => setUploadToast(null), 4000)
         }, 2000)
       }
     } catch {

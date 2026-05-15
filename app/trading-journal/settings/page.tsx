@@ -179,6 +179,302 @@ function ParamEditor({ rule, onUpdated }: { rule: Rule; onUpdated: (r: Rule) => 
   )
 }
 
+// ── Method Setup Wizard ───────────────────────────────────────────
+
+type MethodConfig = {
+  timeframes: string[]
+  riskPct: number
+  maxTradesPerDay: number
+  allowedSessions: string[]
+  minRR: number
+  maxConsecLosses: number
+  revengeWindow: number
+}
+
+type GeneratedRule = {
+  code: string
+  name: string
+  description: string
+  threshold?: number
+  paramKey?: string
+  severity: 'critical' | 'warning'
+  enabled: boolean
+}
+
+const TIMEFRAME_OPTIONS = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
+const SESSION_OPTIONS   = ['Asian', 'European', 'US']
+
+const DEFAULT_METHOD: MethodConfig = {
+  timeframes: ['15m', '1h'],
+  riskPct: 1,
+  maxTradesPerDay: 3,
+  allowedSessions: ['Asian', 'European'],
+  minRR: 2,
+  maxConsecLosses: 2,
+  revengeWindow: 15,
+}
+
+function generateRulesFromMethod(m: MethodConfig): GeneratedRule[] {
+  return [
+    { code: 'OVERTRADING', name: 'Quá số lệnh/ngày',    description: `Không vào quá ${m.maxTradesPerDay} lệnh/ngày`,             threshold: m.maxTradesPerDay,                     paramKey: 'max_trades',    severity: 'critical', enabled: true },
+    { code: 'SESSION_US',  name: 'Giao dịch phiên US',  description: 'Giao dịch trong phiên US',                                                                                        severity: 'warning',  enabled: !m.allowedSessions.includes('US') },
+    { code: 'RISK_HIGH',   name: 'Risk quá cao',        description: `Risk vượt ${(m.riskPct * 2).toFixed(1)}% balance`,         threshold: parseFloat((m.riskPct * 2).toFixed(2)), paramKey: 'max_risk_pct',  severity: 'critical', enabled: true },
+    { code: 'RISK_MEDIUM', name: 'Risk cao',            description: `Risk vượt ${m.riskPct}% balance`,                          threshold: m.riskPct,                             paramKey: 'warn_risk_pct', severity: 'warning',  enabled: true },
+    { code: 'RR_LOW',      name: 'RR thấp',             description: `RR dưới 1:${m.minRR}`,                                    threshold: m.minRR,                               paramKey: 'min_rr',        severity: 'warning',  enabled: true },
+    { code: 'REVENGE_TRADE', name: 'Revenge trade',     description: `Vào lệnh trong ${m.revengeWindow} phút sau khi thua`,     threshold: m.revengeWindow,                       paramKey: 'minutes',       severity: 'critical', enabled: true },
+    { code: 'CONSEC_LOSS', name: 'Thua liên tiếp',      description: `Thua liên tiếp ${m.maxConsecLosses} lệnh`,                threshold: m.maxConsecLosses,                     paramKey: 'max_losses',    severity: 'critical', enabled: true },
+    { code: 'NO_SL',       name: 'Không có SL',         description: 'Lệnh không đặt Stop Loss',                                                                                        severity: 'critical', enabled: true },
+  ]
+}
+
+function MethodSetupWizard({
+  rules,
+  accounts,
+  onRulesUpdated,
+}: {
+  rules: Rule[]
+  accounts: TradingAccount[]
+  onRulesUpdated: (rules: Rule[]) => void
+}) {
+  const [open, setOpen]           = useState(false)
+  const [step, setStep]           = useState(1)
+  const [method, setMethod]       = useState<MethodConfig>({ ...DEFAULT_METHOD })
+  const [wizardRules, setWizardRules] = useState<GeneratedRule[]>([])
+  const [saving, setSaving]       = useState(false)
+  const [saveResult, setSaveResult] = useState<{ rules: number; accounts: number } | null>(null)
+
+  const ic = 'bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition w-full'
+
+  function toggleTF(tf: string) {
+    setMethod(m => ({ ...m, timeframes: m.timeframes.includes(tf) ? m.timeframes.filter(x => x !== tf) : [...m.timeframes, tf] }))
+  }
+  function toggleSession(s: string) {
+    setMethod(m => ({ ...m, allowedSessions: m.allowedSessions.includes(s) ? m.allowedSessions.filter(x => x !== s) : [...m.allowedSessions, s] }))
+  }
+  function toggleWizardRule(code: string) {
+    setWizardRules(prev => prev.map(r => r.code === code ? { ...r, enabled: !r.enabled } : r))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const updatedList = [...rules]
+      let savedCount = 0
+      for (const gr of wizardRules) {
+        const dbRule = rules.find(r => r.code === gr.code)
+        if (!dbRule) continue
+        const newParams = gr.paramKey && gr.threshold !== undefined
+          ? { ...dbRule.params, [gr.paramKey]: gr.threshold }
+          : dbRule.params
+        const res = await fetch(`/api/trading-journal/rules/${dbRule.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ params: newParams, is_active: gr.enabled }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const updated: Rule = data.rule ?? data
+          const idx = updatedList.findIndex(r => r.id === updated.id)
+          if (idx >= 0) updatedList[idx] = updated
+          savedCount++
+        }
+      }
+      onRulesUpdated(updatedList)
+      let rescanned = 0
+      for (const acc of accounts) {
+        const res = await fetch('/api/trading-journal/rescan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account_id: acc.id }),
+        })
+        if (res.ok) rescanned++
+      }
+      setSaveResult({ rules: savedCount, accounts: rescanned })
+      setStep(3)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-white font-semibold text-lg">Phương pháp giao dịch</h2>
+          <p className="text-gray-500 text-xs mt-0.5">Cài đặt phương pháp → tự động generate rules</p>
+        </div>
+        <button
+          onClick={() => { setOpen(v => !v); if (!open) { setStep(1); setSaveResult(null) } }}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium border transition ${
+            open ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10' : 'border-gray-700 text-gray-400 hover:border-gray-500'
+          }`}
+        >
+          {open ? '▲ Thu gọn' : '⚙ Cài đặt phương pháp'}
+        </button>
+      </div>
+
+      {open && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
+          {/* Stepper */}
+          <div className="flex items-center gap-2">
+            {([
+              { n: 1, label: 'Phương pháp' },
+              { n: 2, label: 'Preview rules' },
+              { n: 3, label: 'Hoàn tất' },
+            ] as { n: number; label: string }[]).map((s, i) => (
+              <div key={s.n} className="flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                  step === s.n ? 'bg-indigo-600 text-white' : step > s.n ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-500'
+                }`}>
+                  {step > s.n ? '✓' : s.n}
+                </div>
+                <span className={`text-xs hidden sm:block ${step === s.n ? 'text-gray-200' : 'text-gray-600'}`}>{s.label}</span>
+                {i < 2 && <div className="w-8 h-px bg-gray-800 flex-shrink-0" />}
+              </div>
+            ))}
+          </div>
+
+          {/* Step 1 */}
+          {step === 1 && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-2">Khung thời gian giao dịch</p>
+                <div className="flex flex-wrap gap-2">
+                  {TIMEFRAME_OPTIONS.map(tf => (
+                    <button key={tf} onClick={() => toggleTF(tf)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                        method.timeframes.includes(tf) ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      }`}>
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {([
+                  { label: 'R Size (% balance)', key: 'riskPct',         type: 'float', step: '0.1', min: 0.1, max: 10 },
+                  { label: 'Max lệnh/ngày',       key: 'maxTradesPerDay', type: 'int',   step: '1',   min: 1,   max: 20 },
+                  { label: 'Min RR (1:X)',         key: 'minRR',           type: 'float', step: '0.5', min: 0.5, max: 10 },
+                  { label: 'Max thua liên tiếp',  key: 'maxConsecLosses', type: 'int',   step: '1',   min: 1,   max: 10 },
+                  { label: 'Revenge window (phút)',key: 'revengeWindow',  type: 'int',   step: '1',   min: 1,   max: 120 },
+                ] as { label: string; key: keyof MethodConfig; type: string; step: string; min: number; max: number }[]).map(f => (
+                  <div key={f.key}>
+                    <p className="text-xs text-gray-400 font-medium mb-1.5">{f.label}</p>
+                    <input
+                      type="number" step={f.step} min={f.min} max={f.max}
+                      value={method[f.key] as number}
+                      onChange={e => {
+                        const v = f.type === 'int' ? parseInt(e.target.value) : parseFloat(e.target.value)
+                        setMethod(m => ({ ...m, [f.key]: isNaN(v) ? f.min : v }))
+                      }}
+                      className={ic}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-2">Phiên được phép giao dịch</p>
+                <div className="flex gap-3">
+                  {SESSION_OPTIONS.map(s => {
+                    const allowed = method.allowedSessions.includes(s)
+                    return (
+                      <button key={s} onClick={() => toggleSession(s)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition ${
+                          allowed ? 'border-green-600 text-green-400 bg-green-900/20' : 'border-gray-700 text-gray-500 bg-gray-800/50 hover:border-gray-600'
+                        }`}>
+                        <span>{allowed ? '✓' : '✗'}</span>{s}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => { setWizardRules(generateRulesFromMethod(method)); setStep(2) }}
+                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition"
+                >
+                  Xem preview rules →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <p className="text-gray-400 text-sm">Rules tự động từ phương pháp của bạn. Toggle để bật/tắt từng rule.</p>
+              <div className="space-y-2">
+                {wizardRules.map(gr => (
+                  <div key={gr.code}
+                    className={`flex items-start gap-3 p-4 rounded-xl border transition ${
+                      gr.enabled ? 'border-gray-700 bg-gray-800/50' : 'border-gray-800 bg-gray-900/30 opacity-50'
+                    }`}
+                  >
+                    <button onClick={() => toggleWizardRule(gr.code)}
+                      className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 mt-0.5 ${gr.enabled ? 'bg-indigo-600' : 'bg-gray-700'}`}>
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${gr.enabled ? 'left-[18px]' : 'left-0.5'}`} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-gray-200 text-sm font-medium">{gr.name}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          gr.severity === 'critical' ? 'text-red-400 bg-red-950' : 'text-yellow-400 bg-yellow-950'
+                        }`}>{gr.severity}</span>
+                        {gr.threshold !== undefined && (
+                          <span className="text-indigo-400 text-xs font-mono bg-indigo-950 px-2 py-0.5 rounded">
+                            {gr.paramKey}: {gr.threshold}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-gray-500 text-xs mt-0.5">{gr.description}</p>
+                      <p className="text-gray-700 text-xs font-mono mt-0.5">{gr.code}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between pt-2">
+                <button onClick={() => setStep(1)}
+                  className="px-4 py-2 rounded-xl border border-gray-700 text-gray-400 text-sm hover:border-gray-600 transition">
+                  ← Quay lại
+                </button>
+                <button onClick={handleSave} disabled={saving}
+                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition flex items-center gap-2">
+                  {saving
+                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" /> Đang lưu & rescan…</>
+                    : 'Lưu & Rescan tất cả accounts →'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 */}
+          {step === 3 && saveResult && (
+            <div className="flex flex-col items-center gap-4 py-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-green-900/30 border border-green-700 flex items-center justify-center text-3xl">✓</div>
+              <div>
+                <p className="text-white font-bold text-lg">Hoàn tất!</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  Đã cập nhật <span className="text-white font-semibold">{saveResult.rules} rules</span> và rescan{' '}
+                  <span className="text-white font-semibold">{saveResult.accounts} account{saveResult.accounts !== 1 ? 's' : ''}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => { setStep(1); setSaveResult(null); setOpen(false) }}
+                className="px-6 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition"
+              >
+                Đóng
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 // ── Main settings page ────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -292,6 +588,13 @@ export default function SettingsPage() {
           </div>
           <a href="/trading-journal" className="text-gray-400 hover:text-white text-sm transition">← Back</a>
         </div>
+
+        {/* Method Setup Wizard */}
+        <MethodSetupWizard
+          rules={rules}
+          accounts={accounts}
+          onRulesUpdated={setRules}
+        />
 
         {/* Rule Configuration */}
         <section>

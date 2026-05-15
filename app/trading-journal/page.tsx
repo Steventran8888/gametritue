@@ -15,6 +15,7 @@ const supabase = createAuthClient()
 const authSupabase = supabase
 
 const AVATAR_BASE = 'https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/Avatar'
+const AVATAR_BG_COLORS = ['#3b4bc8','#3aaa35','#1e9e7e','#1788c2','#5c35d4','#7c28cc','#f7941d','#cc1a6e','#d42020','#ffc107']
 function resolveAvatar(url: string | null | undefined): string {
   if (!url) return ''
   if (url.startsWith('http')) return url
@@ -817,8 +818,20 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   const [loadingAccounts, setLoadingAccounts] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
+  const [showAccountSettings, setShowAccountSettings] = useState(false)
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false)
+  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
   const [player, setPlayer] = useState<{ username: string; avatar_url: string | null; avatar_bg: string | null } | null>(null)
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false)
+  const [defaultAvatars, setDefaultAvatars] = useState<string[]>([])
+  const [avatarLoading, setAvatarLoading] = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarSaving, setAvatarSaving] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
+  const [draftAvatarUrl, setDraftAvatarUrl] = useState('')
+  const [draftAvatarBg, setDraftAvatarBg] = useState('')
 
   // Upload
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -910,6 +923,94 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         .then(({ data }) => { if (data) setPlayer(data) })
     })
   }, [])
+
+  // ── Edit Profile ──────────────────────────────────────────────────
+
+  async function openEditProfileModal() {
+    setDraftAvatarUrl(player?.avatar_url ?? '')
+    setDraftAvatarBg(player?.avatar_bg ?? AVATAR_BG_COLORS[0]!)
+    setAvatarError('')
+    setShowEditProfileModal(true)
+    if (defaultAvatars.length > 0) return
+    setAvatarLoading(true)
+    const { data, error } = await supabase.storage.from('Avatar').list('', { limit: 100, offset: 0 })
+    if (error) {
+      setAvatarError(`Không tải được danh sách avatar: ${error.message}`)
+    } else if (data) {
+      setDefaultAvatars(
+        (data as { name: string }[])
+          .map(f => f.name)
+          .filter(n => n.startsWith('avatar') && n.endsWith('.png'))
+          .sort()
+      )
+    }
+    setAvatarLoading(false)
+  }
+
+  async function handleAvatarUploadForProfile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarUploading(true); setAvatarError('')
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setAvatarUploading(false); return }
+    const path = `users/${user.id}/${Date.now()}.png`
+    const { error } = await supabase.storage.from('Avatar').upload(path, file, { upsert: true, contentType: file.type })
+    if (error) {
+      setAvatarError(`Upload thất bại: ${error.message}`)
+    } else {
+      const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path)
+      setDraftAvatarUrl(publicUrl)
+    }
+    setAvatarUploading(false)
+  }
+
+  async function saveProfileAvatar() {
+    setAvatarSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setAvatarSaving(false); return }
+    await supabase.from('players').update({ avatar_url: draftAvatarUrl, avatar_bg: draftAvatarBg }).eq('id', user.id)
+    setPlayer(p => p ? { ...p, avatar_url: draftAvatarUrl, avatar_bg: draftAvatarBg } : p)
+    setAvatarSaving(false)
+    setShowEditProfileModal(false)
+  }
+
+  // ── Delete Account ─────────────────────────────────────────────────
+
+  async function handleDeleteAccount() {
+    if (!selectedId || !selectedAccount) return
+    setIsDeleting(true)
+    const deletedName = selectedAccount.display_name ?? selectedAccount.account_code
+    try {
+      await Promise.all([
+        supabase.from('rule_violations').delete().eq('account_id', selectedId),
+        supabase.from('trading_history').delete().eq('account_id', selectedId),
+        supabase.from('trading_deposits').delete().eq('account_id', selectedId),
+        supabase.from('trading_journal_entries').delete().eq('account_id', selectedId),
+      ])
+      await supabase.from('trading_accounts').delete().eq('id', selectedId)
+      const remaining = accounts.filter(a => a.id !== selectedId)
+      setAccounts(remaining)
+      setShowDeleteAccountModal(false)
+      setDeleteConfirmChecked(false)
+      if (remaining.length > 0) {
+        const nextId = remaining[0]!.id
+        setSelectedId(nextId)
+        writeSelectedAccountCookie(nextId)
+      } else {
+        setSelectedId(null)
+        setTradeHistory([])
+        setViolations([])
+        setJournalEntries([])
+        setAccountStats(null)
+      }
+      setUploadToast(`✓ Đã xóa tài khoản ${deletedName}`)
+      setTimeout(() => setUploadToast(null), 3000)
+    } catch (err) {
+      console.error('[deleteAccount]', err)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   // Load all active trading rules for the add-violation dropdown (once)
   useEffect(() => {
@@ -1169,6 +1270,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                 <div className="fixed inset-0 z-40" onClick={() => setShowProfileDropdown(false)} />
                 <div className="absolute right-0 top-full mt-1.5 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
                   {([
+                    { icon: '👤', label: 'Edit Profile', action: () => { openEditProfileModal(); setShowProfileDropdown(false) } },
                     { icon: '⚙️', label: 'Settings', action: () => { window.location.href = '/trading-journal/settings'; setShowProfileDropdown(false) } },
                     { icon: '🔒', label: 'Lock', action: () => { onLock(); setShowProfileDropdown(false) } },
                     { icon: '🚪', label: 'Đăng xuất', action: () => { onLogout(); setShowProfileDropdown(false) } },
@@ -1252,6 +1354,32 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                 </>
               )}
             </div>
+
+            {/* Account settings gear */}
+            {selectedAccount && (
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={() => setShowAccountSettings(v => !v)}
+                  title="Account settings"
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition text-base"
+                >
+                  ⚙
+                </button>
+                {showAccountSettings && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowAccountSettings(false)} />
+                    <div className="absolute left-0 top-full mt-1.5 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
+                      <button
+                        onClick={() => { setShowAccountSettings(false); setDeleteConfirmChecked(false); setShowDeleteAccountModal(true) }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 transition text-left"
+                      >
+                        🗑️ Xóa tài khoản này
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Action buttons */}
             <button
@@ -1747,6 +1875,155 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             setShowAddModal(false)
           }}
         />
+      )}
+
+      {/* ── Edit Profile Modal ── */}
+      {showEditProfileModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-0 sm:pb-4"
+          onClick={() => setShowEditProfileModal(false)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 flex-shrink-0">
+              <h2 className="text-white font-bold text-base">Tùy chỉnh hồ sơ</h2>
+              <button onClick={() => setShowEditProfileModal(false)} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+              {/* Preview */}
+              <div className="flex justify-center">
+                <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold shadow-md"
+                  style={{ background: draftAvatarBg || AVATAR_BG_COLORS[0] }}>
+                  {draftAvatarUrl
+                    ? <img src={resolveAvatar(draftAvatarUrl)} alt="" className="w-full h-full object-cover" />
+                    : <span>{player?.username?.[0]?.toUpperCase()}</span>}
+                </div>
+              </div>
+              {/* Màu nền */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Màu nền</p>
+                <div className="flex gap-2 flex-wrap">
+                  {AVATAR_BG_COLORS.map(c => (
+                    <button key={c} onClick={() => setDraftAvatarBg(c)}
+                      className="w-8 h-8 rounded-full transition-transform hover:scale-110"
+                      style={{ background: c, outline: draftAvatarBg === c ? `3px solid ${c}` : 'none', outlineOffset: '2px' }} />
+                  ))}
+                </div>
+              </div>
+              {avatarError && (
+                <div className="bg-red-950 border border-red-800 rounded-lg px-3 py-2 text-xs text-red-400">{avatarError}</div>
+              )}
+              {/* Avatar mặc định */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Avatar mặc định</p>
+                {avatarLoading ? (
+                  <p className="text-center text-gray-500 text-sm py-4">Đang tải...</p>
+                ) : defaultAvatars.length === 0 ? (
+                  <p className="text-center text-gray-600 text-sm py-4">Không có avatar</p>
+                ) : (
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {defaultAvatars.map(filename => (
+                      <button key={filename} onClick={() => setDraftAvatarUrl(filename)}
+                        className="rounded-full overflow-hidden aspect-square transition-transform hover:scale-110"
+                        style={{ width: 44, height: 44, outline: draftAvatarUrl === filename ? '3px solid #3b4bc8' : 'none', outlineOffset: '2px' }}>
+                        <img src={`${AVATAR_BASE}/${filename}`} alt="" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Upload */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ảnh tùy chỉnh</p>
+                <label className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border border-dashed transition w-fit text-sm ${
+                  avatarUploading ? 'border-indigo-500 text-indigo-400' : 'border-gray-600 text-gray-400 hover:border-indigo-500 hover:text-indigo-400'
+                }`}>
+                  <span>{avatarUploading ? '⏳' : '📷'}</span>
+                  <span>{avatarUploading ? 'Đang upload...' : 'Upload ảnh'}</span>
+                  <input type="file" accept="image/*" className="hidden" disabled={avatarUploading} onChange={handleAvatarUploadForProfile} />
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-2 px-5 py-4 border-t border-gray-800 flex-shrink-0">
+              <button onClick={() => setShowEditProfileModal(false)}
+                className="flex-1 py-2 rounded-xl border border-gray-700 text-sm text-gray-400 font-semibold hover:border-gray-600 transition">
+                Hủy
+              </button>
+              <button onClick={saveProfileAvatar} disabled={avatarSaving}
+                className="flex-1 py-2 rounded-xl text-white text-sm font-bold transition disabled:opacity-60"
+                style={{ background: '#3b4bc8' }}>
+                {avatarSaving ? 'Đang lưu...' : 'Lưu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Account Modal ── */}
+      {showDeleteAccountModal && selectedAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => !isDeleting && setShowDeleteAccountModal(false)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5"
+            onClick={e => e.stopPropagation()}>
+            {/* Warning icon + title */}
+            <div className="flex flex-col items-center gap-3 text-center">
+              <span className="text-5xl">⚠️</span>
+              <h3 className="text-red-400 text-xl font-bold">Xóa tài khoản?</h3>
+              <p className="text-gray-200 font-semibold text-sm">
+                {selectedAccount.display_name ?? selectedAccount.account_code} · {selectedAccount.broker}
+              </p>
+            </div>
+            {/* Warning text */}
+            <p className="text-gray-400 text-sm text-center leading-relaxed">
+              Hành động này không thể hoàn tác. Toàn bộ dữ liệu giao dịch,
+              vi phạm và journal của tài khoản này sẽ bị xóa vĩnh viễn.
+            </p>
+            {/* Checkbox confirm */}
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className="relative flex-shrink-0 mt-0.5">
+                <input
+                  type="checkbox"
+                  checked={deleteConfirmChecked}
+                  onChange={e => setDeleteConfirmChecked(e.target.checked)}
+                  className="sr-only"
+                />
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${
+                  deleteConfirmChecked ? 'bg-red-600 border-red-600' : 'border-gray-600 group-hover:border-gray-500'
+                }`}>
+                  {deleteConfirmChecked && (
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+              </div>
+              <span className="text-gray-400 text-xs leading-relaxed">
+                Tôi hiểu rằng dữ liệu sẽ bị xóa vĩnh viễn và không thể khôi phục
+              </span>
+            </label>
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteAccountModal(false); setDeleteConfirmChecked(false) }}
+                disabled={isDeleting}
+                className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-300 text-sm font-semibold hover:border-gray-600 transition disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={!deleteConfirmChecked || isDeleting}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-bold transition"
+                style={{ background: '#dc2626', opacity: (!deleteConfirmChecked || isDeleting) ? 0.4 : 1, cursor: (!deleteConfirmChecked || isDeleting) ? 'not-allowed' : 'pointer' }}
+              >
+                {isDeleting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+                    Đang xóa…
+                  </span>
+                ) : 'Xóa tài khoản'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   )

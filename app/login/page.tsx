@@ -29,11 +29,12 @@ export default function LoginPage() {
 
   async function signInWithGoogle() {
     const supabase = createClient()
-    const next = new URLSearchParams(window.location.search).get('next') || '/game'
+    const redirectTo = `${window.location.origin}/auth/callback`
+    console.log('redirectTo:', redirectTo)
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        redirectTo,
         queryParams: { prompt: 'select_account' },
       },
     })
@@ -41,12 +42,11 @@ export default function LoginPage() {
 
   async function signInWithApple() {
     const supabase = createClient()
-    const next = new URLSearchParams(window.location.search).get('next') || '/game'
+    const redirectTo = `${window.location.origin}/auth/callback`
+    console.log('redirectTo:', redirectTo)
     await supabase.auth.signInWithOAuth({
       provider: 'apple',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
+      options: { redirectTo },
     })
   }
 

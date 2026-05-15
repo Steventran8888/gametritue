@@ -14,6 +14,13 @@ import {
 const supabase = createAuthClient()
 const authSupabase = supabase
 
+const AVATAR_BASE = 'https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/Avatar'
+function resolveAvatar(url: string | null | undefined): string {
+  if (!url) return ''
+  if (url.startsWith('http')) return url
+  return `${AVATAR_BASE}/${url}`
+}
+
 const SELECTED_ACCOUNT_COOKIE = 'selected_account_id'
 
 function readSelectedAccountCookie(): string | null {
@@ -809,6 +816,9 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loadingAccounts, setLoadingAccounts] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showAccountDropdown, setShowAccountDropdown] = useState(false)
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+  const [player, setPlayer] = useState<{ username: string; avatar_url: string | null; avatar_bg: string | null } | null>(null)
 
   // Upload
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -890,6 +900,15 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       })
       .catch(err => console.error('[Dashboard] getAccounts error:', err))
       .finally(() => setLoadingAccounts(false))
+  }, [])
+
+  // Load player profile (for header avatar)
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('players').select('username, avatar_url, avatar_bg').eq('id', user.id).single()
+        .then(({ data }) => { if (data) setPlayer(data) })
+    })
   }, [])
 
   // Load all active trading rules for the add-violation dropdown (once)
@@ -1118,51 +1137,145 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-white text-2xl font-bold">Trading Journal</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Upload FTMO CSV → Sheets · Notion · Supabase</p>
-          </div>
-          <div className="flex items-center gap-3">
+          <h1 className="text-white text-2xl font-bold">Trading Journal</h1>
+
+          {/* Profile dropdown */}
+          <div className="relative">
             <button
-              onClick={() => { if (selectedId) { setError(''); setShowUploadModal(true) } }}
-              disabled={!selectedId}
-              className="bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm px-4 py-1.5 rounded-full font-medium transition"
+              onClick={() => setShowProfileDropdown(v => !v)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-gray-800 transition"
             >
-              ↑ Upload CSV
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%',
+                background: player?.avatar_bg ?? '#3b4bc8',
+                overflow: 'hidden', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontSize: 12, fontWeight: 700,
+              }}>
+                {player?.avatar_url
+                  ? <img src={resolveAvatar(player.avatar_url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span>{player?.username?.[0]?.toUpperCase() ?? '?'}</span>}
+              </div>
+              <span className="text-gray-300 text-sm max-w-[80px] truncate hidden sm:block">
+                {player?.username ?? '…'}
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-gray-500 flex-shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
             </button>
-            <a href="/trading-journal/settings" className="text-gray-400 hover:text-white text-sm transition">⚙ Settings</a>
-            <button onClick={onLock} className="text-gray-400 hover:text-white text-sm transition">🔒 Lock</button>
-            <button onClick={onLogout} className="text-gray-500 hover:text-gray-300 text-sm transition">Logout</button>
+
+            {showProfileDropdown && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowProfileDropdown(false)} />
+                <div className="absolute right-0 top-full mt-1.5 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
+                  {([
+                    { icon: '⚙️', label: 'Settings', action: () => { window.location.href = '/trading-journal/settings'; setShowProfileDropdown(false) } },
+                    { icon: '🔒', label: 'Lock', action: () => { onLock(); setShowProfileDropdown(false) } },
+                    { icon: '🚪', label: 'Đăng xuất', action: () => { onLogout(); setShowProfileDropdown(false) } },
+                  ] as { icon: string; label: string; action: () => void }[]).map(item => (
+                    <button
+                      key={item.label}
+                      onClick={item.action}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition text-left"
+                    >
+                      <span>{item.icon}</span>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* Account bar */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            {loadingAccounts ? (
-              <span className="text-gray-500 text-sm">Loading accounts…</span>
-            ) : accounts.length === 0 ? (
-              <span className="text-gray-500 text-sm">No accounts yet</span>
-            ) : (
-              accounts.map(acc => (
-                <button
-                  key={acc.id}
-                  onClick={() => { setSelectedId(acc.id); setResult(null); writeSelectedAccountCookie(acc.id) }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                    selectedId === acc.id
-                      ? 'bg-violet-600 text-white'
-                      : 'bg-transparent border border-gray-600 text-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {acc.display_name ?? acc.account_code} · {acc.broker}
-                </button>
-              ))
-            )}
+
+          {/* Action row: Account selector + buttons */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap sm:flex-nowrap">
+
+            {/* Compact account selector */}
+            <div className="relative flex-1 min-w-0">
+              <button
+                onClick={() => setShowAccountDropdown(v => !v)}
+                disabled={loadingAccounts}
+                className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-700 hover:border-gray-500 bg-gray-800 transition w-full min-w-0 disabled:opacity-50"
+              >
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%', background: '#5c35d4', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700,
+                }}>
+                  {selectedAccount?.broker?.[0]?.toUpperCase() ?? '?'}
+                </div>
+                <span className="text-gray-200 text-sm font-medium truncate flex-1 text-left">
+                  {loadingAccounts ? 'Loading…'
+                    : selectedAccount
+                      ? `${selectedAccount.display_name ?? selectedAccount.account_code} · ${selectedAccount.broker}`
+                      : accounts.length === 0 ? 'Chưa có account' : 'Chọn account'}
+                </span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-gray-500 flex-shrink-0">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showAccountDropdown && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowAccountDropdown(false)} />
+                  <div className="absolute left-0 top-full mt-1.5 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl min-w-full py-1 overflow-hidden">
+                    {accounts.map(acc => (
+                      <button
+                        key={acc.id}
+                        onClick={() => { setSelectedId(acc.id); setResult(null); writeSelectedAccountCookie(acc.id); setShowAccountDropdown(false) }}
+                        className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition text-left ${
+                          selectedId === acc.id ? 'bg-indigo-600/20 text-indigo-300' : 'text-gray-300 hover:bg-gray-700'
+                        }`}
+                      >
+                        <div style={{
+                          width: 20, height: 20, borderRadius: '50%', background: '#5c35d4', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9, fontWeight: 700,
+                        }}>
+                          {acc.broker?.[0]?.toUpperCase()}
+                        </div>
+                        <span className="truncate flex-1">{acc.display_name ?? acc.account_code} · {acc.broker}</span>
+                        {selectedId === acc.id && <span className="text-indigo-400 flex-shrink-0">✓</span>}
+                      </button>
+                    ))}
+                    <div className="border-t border-gray-700 mt-1 pt-1">
+                      <button
+                        onClick={() => { setShowAddModal(true); setShowAccountDropdown(false) }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-indigo-400 hover:bg-gray-700 transition text-left"
+                      >
+                        + Thêm account
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Action buttons */}
             <button
-              onClick={() => setShowAddModal(true)}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-800 text-indigo-400 hover:bg-gray-700 border border-indigo-800 transition"
+              onClick={() => { if (selectedId) { setError(''); setShowUploadModal(true) } }}
+              disabled={!selectedId}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white transition whitespace-nowrap flex-shrink-0"
             >
-              + Add Account
+              📤 Upload CSV
+            </button>
+            <button
+              onClick={() => { if (selectedId) setJournalPanel(getDateKey(new Date().toISOString())) }}
+              disabled={!selectedId}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition whitespace-nowrap flex-shrink-0 disabled:opacity-40 ${
+                journalPanel ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10' : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+              }`}
+            >
+              📓 Daily Journal
+            </button>
+            <button
+              disabled
+              title="Sắp ra mắt"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border border-gray-700 text-gray-600 opacity-40 cursor-not-allowed whitespace-nowrap flex-shrink-0"
+            >
+              📊 Performance
             </button>
           </div>
 
@@ -1270,7 +1383,6 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
         {/* Trade History — Timeline */}
         {selectedAccount && (() => {
-          const todayKey = getDateKey(new Date().toISOString())
           const allDayGroups = buildDayGroups(tradeHistory, violations, journalEntries)
 
           // Apply filters
@@ -1278,21 +1390,26 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             const d = new Date(day.dateKey + 'T00:00:00Z')
             const dow = d.getUTCDay() // 0=Sun, 6=Sat
             const isWeekend = dow === 0 || dow === 6
-            const isToday = day.dateKey === todayKey
             const hasTrades = day.trades.length > 0
             const journalHasTrades = day.journal?.has_trades === true
 
-            // Weekend filter (today still respects this)
+            // Weekend filter
             if (hideWeekends && isWeekend) return false
 
-            // Trade-only filter
+            // Trade-only filter — either real trades OR user manually ticked "Có lệnh hôm nay"
             if (onlyTradeDays) {
-              if (isToday) return journalHasTrades  // today: only show if journal says has_trades
-              return hasTrades
+              return hasTrades || journalHasTrades
             }
 
             return true
           })
+
+          // Count trade days (after weekend filter) for the counter badge
+          const tradeDayCount = allDayGroups.filter(day => {
+            const dow = new Date(day.dateKey + 'T00:00:00Z').getUTCDay()
+            if (hideWeekends && (dow === 0 || dow === 6)) return false
+            return day.trades.length > 0 || day.journal?.has_trades === true
+          }).length
 
           return (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
@@ -1317,7 +1434,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                     }`}
                     style={onlyTradeDays ? { background: '#3b4bc8' } : {}}
                   >
-                    Có lệnh
+                    Ngày có lệnh: {tradeDayCount}
                   </button>
                 </div>
 

@@ -819,12 +819,48 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
 
 type Period = 'day' | 'week' | 'month'
 
+type ViolCodeInfo = { count: number; category: string; name: string }
+
 type PeriodRow = {
   label: string; sortKey: string; pnl: number; trades: number; wins: number
-  Overtrading: number; Session: number; Risk: number
-  Hold: number; Behavior: number; Other: number
+  Risk: number; Timing: number; Behavior: number; Drawdown: number
+  violByCode: Record<string, ViolCodeInfo>
   violPerTrade: number
 }
+
+const CAT_COLORS: Record<string, string> = {
+  Risk: '#dc2626', Timing: '#f97316', Behavior: '#3b4bc8', Drawdown: '#7c3aed',
+}
+
+function categoryToDisplay(dbCategory: string): 'Risk' | 'Timing' | 'Behavior' | 'Drawdown' {
+  if (dbCategory === 'risk')     return 'Risk'
+  if (dbCategory === 'timing')   return 'Timing'
+  if (dbCategory === 'drawdown') return 'Drawdown'
+  return 'Behavior'
+}
+
+const LEGEND_GROUPS: { cat: string; emoji: string; desc: string; rules: string[] }[] = [
+  {
+    cat: 'Risk', emoji: '🔴',
+    desc: 'Các lỗi liên quan đến quản lý rủi ro:',
+    rules: ['NO_SL: Không có stop loss', 'RISK_HIGH: Rủi ro vượt ngưỡng tối đa', 'RISK_MEDIUM: Rủi ro cận ngưỡng tối ưu', 'RR_LOW: Tỉ lệ RR thấp hơn mức tối thiểu'],
+  },
+  {
+    cat: 'Timing', emoji: '🟠',
+    desc: 'Các lỗi liên quan đến thời gian và phiên:',
+    rules: ['HOLD_TOO_SHORT: Chốt lệnh quá sớm so với timeframe', 'HOLD_TOO_LONG: Giữ lệnh quá lâu không có lý do', 'SESSION_US: Vào lệnh trong phiên không cho phép'],
+  },
+  {
+    cat: 'Behavior', emoji: '🔵',
+    desc: 'Các lỗi về tâm lý và hành vi:',
+    rules: ['OVERTRADING: Quá nhiều lệnh trong ngày', 'REVENGE_TRADE: Vào lệnh ngay sau khi thua', 'CONSEC_LOSS: Thua liên tiếp không dừng', 'EARLY_EXIT: Chốt lãi sớm trước TP', 'FOMO: Vào lệnh theo đám đông'],
+  },
+  {
+    cat: 'Drawdown', emoji: '🟣',
+    desc: 'Cảnh báo về mức thua lỗ tổng thể:',
+    rules: ['DAILY_DD_BREACH: Vượt giới hạn thua trong ngày', 'TOTAL_DD_WARNING: Tiến gần giới hạn thua tổng tài khoản'],
+  },
+]
 
 function getWeekKey(isoDate: string): string {
   const d = new Date(isoDate)
@@ -852,16 +888,6 @@ function getPeriodLabel(key: string, period: Period): string {
   return `T${parseInt(month ?? '1')}/${year}`
 }
 
-function categorizeViolation(code: string): keyof PeriodRow {
-  const c = (code ?? '').toUpperCase()
-  if (c.includes('OVERTRAD')) return 'Overtrading'
-  if (c.includes('SESSION'))  return 'Session'
-  if (c.includes('RISK'))     return 'Risk'
-  if (c.includes('HOLD'))     return 'Hold'
-  if (c.includes('REVENGE') || c.includes('FOMO')) return 'Behavior'
-  return 'Other'
-}
-
 function buildPeriodData(trades: TradeHistoryRow[], violations: ViolationWithRule[], period: Period = 'week'): PeriodRow[] {
   const periods = new Map<string, PeriodRow>()
   const ticketToPeriod = new Map<string, string>()
@@ -872,7 +898,8 @@ function buildPeriodData(trades: TradeHistoryRow[], violations: ViolationWithRul
     if (!periods.has(key)) periods.set(key, {
       label: getPeriodLabel(key, period), sortKey: key,
       pnl: 0, trades: 0, wins: 0, violPerTrade: 0,
-      Overtrading: 0, Session: 0, Risk: 0, Hold: 0, Behavior: 0, Other: 0,
+      Risk: 0, Timing: 0, Behavior: 0, Drawdown: 0,
+      violByCode: {},
     })
     const w = periods.get(key)!
     w.pnl += (t.profit ?? 0) + (t.commission ?? 0)
@@ -884,16 +911,20 @@ function buildPeriodData(trades: TradeHistoryRow[], violations: ViolationWithRul
     const key = ticketToPeriod.get(v.ticket)
     if (!key || !periods.has(key)) continue
     const rule = Array.isArray(v.trading_rules) ? v.trading_rules[0] : v.trading_rules
+    // Use DB category field for correct grouping
+    const cat = categoryToDisplay(rule?.category ?? 'behavior')
     const code = rule?.code || v.rule_id
-    const cat = categorizeViolation(code)
+    const name = rule?.name || code
     const w = periods.get(key)!
     ;(w[cat] as number)++
+    if (!w.violByCode[code]) w.violByCode[code] = { count: 0, category: cat, name }
+    w.violByCode[code].count++
   }
 
   return Array.from(periods.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,w]) => ({
     ...w,
     violPerTrade: w.trades > 0
-      ? parseFloat(((w.Overtrading + w.Session + w.Risk + w.Hold + w.Behavior + w.Other) / w.trades).toFixed(2))
+      ? parseFloat(((w.Risk + w.Timing + w.Behavior + w.Drawdown) / w.trades).toFixed(2))
       : 0,
   }))
 }
@@ -909,7 +940,7 @@ function computeSummary(data: PeriodRow[]) {
   const prev4 = data.slice(-8, -4)
   if (prev4.length === 0) return null
 
-  const totalViol  = (rows: PeriodRow[]) => rows.reduce((s,w) => s + w.Overtrading + w.Session + w.Risk + w.Hold + w.Behavior + w.Other, 0)
+  const totalViol  = (rows: PeriodRow[]) => rows.reduce((s,w) => s + w.Risk + w.Timing + w.Behavior + w.Drawdown, 0)
   const totalTrades = (rows: PeriodRow[]) => rows.reduce((s,w) => s + w.trades, 0)
   const avgVR  = (rows: PeriodRow[]) => { const t = totalTrades(rows); return t > 0 ? totalViol(rows) / t : 0 }
   const avgWR  = (rows: PeriodRow[]) => { const t = totalTrades(rows); const w = rows.reduce((s,r) => s + r.wins, 0); return t > 0 ? (w/t)*100 : 0 }
@@ -943,26 +974,42 @@ function ViolTooltip({ active, payload }: { active?: boolean; payload?: { payloa
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload
   if (!d) return null
-  const totalViol = d.Overtrading + d.Session + d.Risk + d.Hold + d.Behavior + d.Other
+  const totalViol = d.Risk + d.Timing + d.Behavior + d.Drawdown
   const winRate = d.trades > 0 ? ((d.wins / d.trades) * 100).toFixed(1) : '—'
-  const cats = [
-    { k: 'Risk', v: d.Risk, c: '#eab308' }, { k: 'Hold', v: d.Hold, c: '#22c55e' },
-    { k: 'Session', v: d.Session, c: '#f97316' }, { k: 'Overtrading', v: d.Overtrading, c: '#ef4444' },
-    { k: 'Behavior', v: d.Behavior, c: '#3b82f6' }, { k: 'Other', v: d.Other, c: '#a855f7' },
-  ].filter(x => x.v > 0)
+
+  // Group violByCode by category for display
+  const byCategory: Record<string, { code: string; name: string; count: number }[]> = {}
+  for (const [code, info] of Object.entries(d.violByCode ?? {})) {
+    if (!byCategory[info.category]) byCategory[info.category] = []
+    byCategory[info.category].push({ code, name: info.name, count: info.count })
+  }
+
   return (
-    <div style={{ ...CHART_TOOLTIP_STYLE, padding: '10px 14px', minWidth: 190 }}>
+    <div style={{ ...CHART_TOOLTIP_STYLE, padding: '10px 14px', minWidth: 210 }}>
       <p style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: 6, borderBottom: '1px solid #334155', paddingBottom: 4 }}>
         {d.label}
       </p>
-      <p style={{ color: '#fca5a5', marginBottom: cats.length ? 2 : 6 }}>Vi phạm: {totalViol} tổng</p>
-      {cats.map(x => (
-        <p key={x.k} style={{ color: x.c, paddingLeft: 10, fontSize: 11, marginBottom: 1 }}>• {x.k}: {x.v}</p>
+      {(['Risk', 'Timing', 'Behavior', 'Drawdown'] as const).filter(cat => (d[cat] as number) > 0).map(cat => (
+        <div key={cat} style={{ marginBottom: 4 }}>
+          <p style={{ color: CAT_COLORS[cat], fontWeight: 600, fontSize: 11, marginBottom: 1 }}>
+            {cat}: {d[cat] as number}
+          </p>
+          {(byCategory[cat] ?? []).sort((a,b) => b.count - a.count).map(r => (
+            <p key={r.code} style={{ color: '#94a3b8', paddingLeft: 10, fontSize: 11, marginBottom: 1 }}>
+              • {r.code}: {r.count}
+            </p>
+          ))}
+        </div>
       ))}
       <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6, fontSize: 11 }}>
-        <p style={{ color: '#94a3b8' }}>Số lệnh: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{d.trades}</span></p>
-        <p style={{ color: '#94a3b8' }}>Vi phạm/lệnh: <span style={{ color: '#fbbf24', fontWeight: 600 }}>{d.violPerTrade}</span></p>
-        <p style={{ color: '#94a3b8' }}>Win rate: <span style={{ color: '#e2e8f0' }}>{winRate}%</span></p>
+        <p style={{ color: '#94a3b8', marginBottom: 1 }}>
+          Tổng: <span style={{ color: '#fca5a5' }}>{totalViol} vi phạm</span>
+          {' / '}
+          <span style={{ color: '#e2e8f0' }}>{d.trades} lệnh</span>
+          {' = '}
+          <span style={{ color: '#fbbf24', fontWeight: 600 }}>{d.violPerTrade}/lệnh</span>
+        </p>
+        <p style={{ color: '#94a3b8', marginBottom: 1 }}>Win rate: <span style={{ color: '#e2e8f0' }}>{winRate}%</span></p>
         <p style={{ color: '#94a3b8' }}>P&L: <span style={{ color: d.pnl >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{d.pnl >= 0 ? '+' : ''}${d.pnl.toFixed(2)}</span></p>
       </div>
     </div>
@@ -1034,13 +1081,11 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
             <YAxis yAxisId="right" orientation="right" tick={AXIS_STYLE} axisLine={false} tickLine={false} allowDecimals={false} width={36} />
             <Tooltip content={<ViolTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
             <Legend wrapperStyle={{ fontSize: 10, color: '#94a3b8', paddingTop: 8 }} />
-            {/* Stacked bars — violations (left axis) */}
-            <Bar yAxisId="left" dataKey="Overtrading" stackId="v" fill="#ef4444" name="Overtrading" />
-            <Bar yAxisId="left" dataKey="Session"     stackId="v" fill="#f97316" name="Session" />
-            <Bar yAxisId="left" dataKey="Risk"        stackId="v" fill="#eab308" name="Risk" />
-            <Bar yAxisId="left" dataKey="Hold"        stackId="v" fill="#22c55e" name="Hold" />
-            <Bar yAxisId="left" dataKey="Behavior"    stackId="v" fill="#3b82f6" name="Behavior" />
-            <Bar yAxisId="left" dataKey="Other"       stackId="v" fill="#a855f7" radius={[3,3,0,0]} name="Other" />
+            {/* Stacked bars — violations by DB category (left axis) */}
+            <Bar yAxisId="left" dataKey="Risk"     stackId="v" fill="#dc2626" name="Risk" />
+            <Bar yAxisId="left" dataKey="Timing"   stackId="v" fill="#f97316" name="Timing" />
+            <Bar yAxisId="left" dataKey="Behavior" stackId="v" fill="#3b4bc8" name="Behavior" />
+            <Bar yAxisId="left" dataKey="Drawdown" stackId="v" fill="#7c3aed" radius={[3,3,0,0]} name="Drawdown" />
             {/* Số lệnh — line, right axis */}
             <Line yAxisId="right" dataKey="trades" name="Số lệnh" type="monotone"
               stroke="rgba(255,255,255,0.5)" strokeWidth={2}
@@ -1053,6 +1098,33 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
               activeDot={{ r: 4 }} />
           </ComposedChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Legend explanation */}
+      <div style={{ background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 20 }}>
+        <h3 style={{ color: '#f1f5f9', fontWeight: 600, fontSize: 13, marginBottom: 16 }}>📖 Giải thích các nhóm vi phạm</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+          {LEGEND_GROUPS.map(g => (
+            <div key={g.cat} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <p style={{ color: CAT_COLORS[g.cat], fontWeight: 700, fontSize: 12, marginBottom: 2 }}>{g.emoji} {g.cat}</p>
+              <p style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>{g.desc}</p>
+              {g.rules.map(r => {
+                const colonIdx = r.indexOf(': ')
+                const code = colonIdx !== -1 ? r.slice(0, colonIdx) : r
+                const desc = colonIdx !== -1 ? r.slice(colonIdx + 2) : ''
+                return (
+                  <div key={code} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: CAT_COLORS[g.cat], flexShrink: 0, marginTop: 3 }} />
+                    <p style={{ color: '#94a3b8', fontSize: 11 }}>
+                      <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>{code}</span>
+                      {desc ? `: ${desc}` : ''}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Chart 2 — P&L */}

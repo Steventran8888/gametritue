@@ -3,6 +3,26 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
 
+// ── DESIGN.md tokens (login context) ──────────────────────────────
+// colors.login-surface           #f8fafc
+// colors.login-surface-container #ffffff
+// colors.login-on-surface        #0f172a
+// colors.login-on-surface-variant #475569
+// colors.login-outline           #cbd5e1
+// colors.primary                 #3b4bc8
+// colors.on-primary              #ffffff
+// typography.brand-logo          Playfair Display 28px/600/-0.01em
+// typography.headline-md         Inter 24px/600/-0.01em
+// typography.body-md             Inter 14px/400
+// typography.label-lg            Inter 14px/600/0.01em
+// typography.label-md            Inter 12px/600/0.02em
+// rounded.full                   9999px
+// rounded.2xl                    2rem
+// spacing.xl                     40px
+// spacing.lg                     24px
+// components.login-card          bg #ffffff, radius 2rem, padding 40px
+// ──────────────────────────────────────────────────────────────────
+
 const LOGO_URL = 'https://dlorlkskbyyvlpcvqigl.supabase.co/storage/v1/object/public/assets/logo/gametritue-stacked-fullcolor.svg'
 
 const GOOGLE_SVG = (
@@ -53,12 +73,14 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen">
 
-      {/* ── LEFT PANEL — white, desktop only ── */}
-      <div className="hidden md:flex md:w-1/2 flex-col items-center justify-between py-16 px-14 relative overflow-hidden bg-white">
-
+      {/* ── LEFT PANEL — login-surface-container #ffffff, desktop only ── */}
+      <div
+        className="hidden md:flex md:w-1/2 flex-col items-center justify-between py-16 px-14 relative overflow-hidden"
+        style={{ backgroundColor: '#ffffff' /* login-surface-container */ }}
+      >
         {/* Center: logo + tagline */}
         <div className="flex-1 flex flex-col items-center justify-center gap-5 text-center z-10">
-          <div className="relative" style={{ width: 220, height: 220 }}>
+          <div style={{ width: 220, height: 220 }}>
             <img
               src={LOGO_URL}
               alt="Gametritue"
@@ -67,12 +89,16 @@ export default function LoginPage() {
             />
           </div>
           {!isTradingLog && (
-            <p className="text-sm" style={{ color: '#94a3b8' }}>
+            <p style={{
+              color: '#475569',       /* login-on-surface-variant */
+              fontSize: 14,           /* typography.body-md */
+              fontWeight: 400,
+              lineHeight: '20px',
+            }}>
               Rèn trí tuệ · Leo bảng xếp hạng
             </p>
           )}
         </div>
-
 
         {/* Wave image at bottom */}
         <img
@@ -83,14 +109,14 @@ export default function LoginPage() {
         />
       </div>
 
-      {/* ── RIGHT PANEL — gradient purple ── */}
+      {/* ── RIGHT PANEL — login-surface #f8fafc ── */}
       <div
         className="flex-1 flex flex-col items-center justify-center relative overflow-hidden px-6 py-12 md:px-12"
-        style={{ background: 'linear-gradient(155deg, #3b4bc8 0%, #5c35d4 100%)' }}
+        style={{ backgroundColor: '#f8fafc' /* login-surface */ }}
       >
-        {/* Mobile logo (hidden on desktop) */}
+        {/* Mobile brand mark (hidden on desktop) */}
         <div className="flex md:hidden flex-col items-center gap-3 mb-8">
-          <div className="relative" style={{ width: 56, height: 56 }}>
+          <div style={{ width: 56, height: 56 }}>
             <img
               src={LOGO_URL}
               alt=""
@@ -98,53 +124,133 @@ export default function LoginPage() {
               onError={e => { e.currentTarget.style.display = 'none' }}
             />
           </div>
-          <span className="font-bold text-2xl text-white">{isTradingLog ? 'Trading Log' : 'Gametritue'}</span>
+          <span style={{
+            fontFamily: 'var(--font-playfair), "Playfair Display", Georgia, serif', /* brand-logo */
+            fontSize: 28,
+            fontWeight: 600,
+            lineHeight: '36px',
+            letterSpacing: '-0.01em',
+            color: '#0f172a', /* login-on-surface */
+          }}>
+            {isTradingLog ? 'Trading Log' : 'Gametritue'}
+          </span>
         </div>
 
-        {/* Card */}
-        <div className="w-full max-w-sm z-10">
-          <h2 className="font-bold mb-1" style={{ fontSize: 28, color: '#ffffff' }}>
+        {/* Login card — login-surface-container, rounded-2xl, padding xl */}
+        <div
+          className="w-full z-10"
+          style={{
+            maxWidth: 400,
+            backgroundColor: '#ffffff',                  /* login-surface-container */
+            borderRadius: '2rem',                         /* rounded.2xl */
+            padding: 40,                                  /* spacing.xl */
+            boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 8px 32px rgba(15,23,42,0.08)',
+          }}
+        >
+          {/* Heading — headline-md */}
+          <h2 style={{
+            fontFamily: 'var(--font-inter), Inter, sans-serif',
+            fontSize: 24,             /* typography.headline-md */
+            fontWeight: 600,
+            lineHeight: '32px',
+            letterSpacing: '-0.01em',
+            color: '#0f172a',         /* login-on-surface */
+            marginBottom: 8,          /* spacing.sm */
+          }}>
             Chào mừng trở lại
           </h2>
-          <p className="text-sm mb-8" style={{ color: 'rgba(255,255,255,0.7)' }}>
+
+          {/* Subtitle — body-md */}
+          <p style={{
+            fontSize: 14,             /* typography.body-md */
+            fontWeight: 400,
+            lineHeight: '20px',
+            color: '#475569',         /* login-on-surface-variant */
+            marginBottom: 24,         /* spacing.lg */
+          }}>
             Đăng nhập để tiếp tục hành trình
           </p>
 
-          {/* Google */}
+          {/* Google — social button, white bg + login-outline border, rounded-full */}
           <button
             onClick={signInWithGoogle}
-            className="w-full flex items-center justify-center gap-3 rounded-full transition-all hover:bg-slate-50 active:scale-95"
-            style={{ height: 52, border: '1.5px solid #e2e8f0', background: '#ffffff' }}
+            className="w-full flex items-center justify-center gap-3 active:scale-95"
+            style={{
+              height: 48,
+              backgroundColor: '#ffffff',     /* login-surface-container */
+              border: '1.5px solid #cbd5e1',  /* login-outline */
+              borderRadius: 9999,             /* rounded.full */
+              cursor: 'pointer',
+              transition: 'background-color 150ms ease-out',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f8fafc' }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#ffffff' }}
           >
             {GOOGLE_SVG}
-            <span style={{ fontSize: 15, fontWeight: 500, color: '#1e293b' }}>Tiếp tục với Google</span>
+            <span style={{
+              fontSize: 14,           /* typography.label-lg */
+              fontWeight: 600,
+              letterSpacing: '0.01em',
+              color: '#0f172a',       /* login-on-surface */
+            }}>
+              Tiếp tục với Google
+            </span>
           </button>
 
           <div style={{ height: 12 }} />
 
-          {/* Apple */}
+          {/* Apple — social button, black bg, rounded-full */}
           <button
             onClick={signInWithApple}
-            className="w-full flex items-center justify-center gap-3 rounded-full transition-all hover:opacity-90 active:scale-95"
-            style={{ height: 52, background: '#000000' }}
+            className="w-full flex items-center justify-center gap-3 active:scale-95"
+            style={{
+              height: 48,
+              backgroundColor: '#000000',
+              border: 'none',
+              borderRadius: 9999,   /* rounded.full */
+              cursor: 'pointer',
+              transition: 'opacity 150ms ease-out',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
           >
             {APPLE_SVG}
-            <span style={{ fontSize: 15, fontWeight: 600, color: '#ffffff' }}>Tiếp tục với Apple</span>
+            <span style={{
+              fontSize: 14,         /* typography.label-lg */
+              fontWeight: 600,
+              letterSpacing: '0.01em',
+              color: '#ffffff',
+            }}>
+              Tiếp tục với Apple
+            </span>
           </button>
 
           <div style={{ height: 32 }} />
 
           {/* Divider */}
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.3)' }} />
-            <span className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>hoặc</span>
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.3)' }} />
+            <div style={{ flex: 1, height: 1, backgroundColor: '#cbd5e1' }} /* login-outline */ />
+            <span style={{
+              fontSize: 14,         /* typography.body-md */
+              fontWeight: 400,
+              color: '#475569',     /* login-on-surface-variant */
+            }}>
+              hoặc
+            </span>
+            <div style={{ flex: 1, height: 1, backgroundColor: '#cbd5e1' }} /* login-outline */ />
           </div>
 
           <div style={{ height: 32 }} />
 
-          {/* Terms */}
-          <p className="text-center" style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.7 }}>
+          {/* Terms — label-md */}
+          <p style={{
+            textAlign: 'center',
+            fontSize: 12,           /* typography.label-md */
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            lineHeight: 1.7,
+            color: '#475569',       /* login-on-surface-variant */
+          }}>
             Bằng cách đăng nhập, bạn đồng ý với{' '}
             <span className="underline cursor-pointer hover:opacity-80 transition-opacity">Điều khoản sử dụng</span>
             {' '}và{' '}

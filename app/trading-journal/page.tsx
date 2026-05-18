@@ -262,7 +262,7 @@ function ViolationBadge({
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs flex items-center gap-1 whitespace-nowrap ${
       isCritical
-        ? 'bg-red-900 text-red-300 border border-red-700'
+        ? 'bg-[#991b1b] text-[#fecaca] border border-red-700'
         : 'bg-yellow-900 text-yellow-300 border border-yellow-700'
     }`}>
       {label}
@@ -313,7 +313,7 @@ function AddViolationDropdown({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-52 max-h-72 overflow-y-auto"
+        className="fixed z-50 bg-[#222840] border border-gray-700 rounded-xl shadow-2xl w-52 max-h-72 overflow-y-auto"
         style={pos.openUpward
           ? { top: pos.anchorTop - 4, left: pos.left, transform: 'translateY(-100%)' }
           : { top: pos.anchorBottom + 4, left: pos.left }
@@ -321,14 +321,14 @@ function AddViolationDropdown({
       >
         {sortedCats.map(cat => (
           <div key={cat}>
-            <p className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-800">
+            <p className="px-3 py-1.5 text-xs font-semibold text-[#475569] uppercase tracking-wider sticky top-0 bg-[#222840]">
               {cat}
             </p>
             {(byCategory[cat] ?? []).map(rule => (
               <button
                 key={rule.id}
                 onClick={e => { e.stopPropagation(); onSelect(rule.id) }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 transition text-left"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#e2e8f0] hover:bg-[#2b3350] transition text-left"
               >
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   rule.severity === 'critical' ? 'bg-red-500' : 'bg-yellow-500'
@@ -339,7 +339,7 @@ function AddViolationDropdown({
           </div>
         ))}
         {rules.length === 0 && (
-          <p className="px-3 py-4 text-xs text-gray-500 text-center">No rules available</p>
+          <p className="px-3 py-4 text-xs text-[#475569] text-center">No rules available</p>
         )}
       </div>
     </>
@@ -378,11 +378,11 @@ function PasswordScreen({ onUnlock }: { onUnlock: () => void }) {
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-xl">
+    <main className="min-h-screen bg-[#0f1117] flex items-center justify-center px-4">
+      <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-xl">
         <div className="mb-6">
           <h1 className="text-white text-xl font-bold">🔓 Unlock Journal</h1>
-          <p className="text-gray-400 text-sm mt-1">Enter password to continue</p>
+          <p className="text-[#94a3b8] text-sm mt-1">Enter password to continue</p>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="relative">
@@ -392,14 +392,14 @@ function PasswordScreen({ onUnlock }: { onUnlock: () => void }) {
               onChange={e => setPassword(e.target.value)}
               placeholder="Password"
               autoFocus
-              className="w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-xl px-4 py-3 pr-11 text-sm focus:outline-none focus:border-indigo-500 transition"
+              className="w-full bg-[#222840] border border-gray-700 text-white placeholder-[#475569] rounded-xl px-4 py-3 pr-11 text-sm focus:outline-none focus:border-[#3b4bc8] transition"
             />
             <button
               type="button"
               onClick={() => setShowPw(v => !v)}
               tabIndex={-1}
               aria-label={showPw ? 'Hide password' : 'Show password'}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#475569] hover:text-[#e2e8f0] transition"
             >
               {showPw ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -415,11 +415,11 @@ function PasswordScreen({ onUnlock }: { onUnlock: () => void }) {
               )}
             </button>
           </div>
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+          {error && <p className="text-[#f87171] text-xs">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-60 text-white rounded-xl py-3 text-sm font-semibold transition"
+            className="bg-[#3b4bc8] hover:bg-[#6272e0] active:scale-95 disabled:opacity-60 text-white rounded-full py-3 text-sm font-semibold transition"
           >
             {loading ? 'Checking…' : 'Enter'}
           </button>
@@ -500,12 +500,12 @@ function AddAccountModal({
   }
 
   const ddTypeLabel = ddType === 'trailing' ? 'Trailing' : ddType === 'static' ? 'Static' : 'None'
-  const ic = 'w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
-  const lc = 'text-xs text-gray-400 font-medium mb-1'
+  const ic = 'w-full bg-[#222840] border border-gray-700 text-white placeholder-[#475569] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#3b4bc8] transition'
+  const lc = 'text-xs text-[#94a3b8] font-medium mb-1'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1f2e] border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h3 className="text-white font-bold text-base mb-5">Add Trading Account</h3>
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
@@ -536,12 +536,12 @@ function AddAccountModal({
           <div className="grid grid-cols-3 gap-3">
             <div><p className={lc}>Daily DD %</p><input type="number" step="0.1" value={dailyDdPct} onChange={e => setDailyDdPct(e.target.value)} placeholder="—" className={ic} /></div>
             <div><p className={lc}>Total DD %</p><input type="number" step="0.1" value={totalDdPct} onChange={e => setTotalDdPct(e.target.value)} placeholder="—" className={ic} /></div>
-            <div><p className={lc}>DD Type</p><div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-400">{ddTypeLabel}</div></div>
+            <div><p className={lc}>DD Type</p><div className="px-3 py-2 bg-[#222840] border border-gray-700 rounded-xl text-sm text-[#94a3b8]">{ddTypeLabel}</div></div>
           </div>
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+          {error && <p className="text-[#f87171] text-xs">{error}</p>}
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl border border-gray-700 text-gray-400 text-sm font-semibold hover:border-gray-600 transition">Cancel</button>
-            <button type="submit" disabled={saving} className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition">{saving ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-full border border-gray-700 text-[#94a3b8] text-sm font-semibold hover:border-gray-600 transition">Cancel</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2 rounded-full bg-[#3b4bc8] hover:bg-[#6272e0] disabled:opacity-60 text-white text-sm font-semibold transition">{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </form>
       </div>
@@ -573,28 +573,28 @@ function ResultPanel({ result }: { result: UploadResult }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-gray-400">
-        <span className="text-green-400 font-semibold">✅ {result.supabase_inserted} trades synced</span>
+      <p className="text-sm text-[#94a3b8]">
+        <span className="text-[#3aaa35] font-semibold">✅ {result.supabase_inserted} trades synced</span>
         {result.duplicates_skipped > 0 && (
-          <span className="text-yellow-500 ml-2">· ⚠️ {result.duplicates_skipped} trùng đã bỏ qua</span>
+          <span className="text-[#f7941d] ml-2">· ⚠️ {result.duplicates_skipped} trùng đã bỏ qua</span>
         )}
         {' '}
-        <span className="text-gray-600">→ Sheets · Notion · Supabase</span>
+        <span className="text-[#475569]">→ Sheets · Notion · Supabase</span>
       </p>
 
       {(result.violations_found ?? 0) === 0 ? (
-        <p className="text-xs text-green-600">✓ No rule violations detected</p>
+        <p className="text-xs text-[#3aaa35]">✓ No rule violations detected</p>
       ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="bg-[#1a1f2e] border border-gray-800 rounded-xl overflow-hidden">
           <button
             onClick={() => setShowViolations(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/50 transition"
+            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#222840]/50 transition"
           >
-            <span className="text-sm font-semibold text-yellow-400">⚠ Rule Violations ({result.violations_found})</span>
+            <span className="text-sm font-semibold text-[#ffc107]">⚠ Rule Violations ({result.violations_found})</span>
             <div className="flex items-center gap-2">
-              {nCritical > 0 && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-950 text-red-400">Critical: {nCritical}</span>}
-              {nWarning  > 0 && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-950 text-yellow-400">Warning: {nWarning}</span>}
-              <span className="text-gray-600 text-xs">{showViolations ? '▲' : '▼'}</span>
+              {nCritical > 0 && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-950 text-[#f87171]">Critical: {nCritical}</span>}
+              {nWarning  > 0 && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-950 text-[#ffc107]">Warning: {nWarning}</span>}
+              <span className="text-[#475569] text-xs">{showViolations ? '▲' : '▼'}</span>
             </div>
           </button>
           {showViolations && (
@@ -602,23 +602,23 @@ function ResultPanel({ result }: { result: UploadResult }) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Ticket</th>
-                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Rule</th>
-                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Severity</th>
-                    <th className="px-4 py-2 text-left text-gray-500 font-medium">Note</th>
+                    <th className="px-4 py-2 text-left text-[#475569] font-medium">Ticket</th>
+                    <th className="px-4 py-2 text-left text-[#475569] font-medium">Rule</th>
+                    <th className="px-4 py-2 text-left text-[#475569] font-medium">Severity</th>
+                    <th className="px-4 py-2 text-left text-[#475569] font-medium">Note</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.violations.map((v, i) => (
                     <tr key={i} className="border-b border-gray-800/50">
-                      <td className="px-4 py-2 font-mono text-gray-300">{v.ticket}</td>
-                      <td className="px-4 py-2 text-gray-300 whitespace-nowrap">{ruleNames[v.code] ?? v.code}</td>
+                      <td className="px-4 py-2 font-mono text-[#e2e8f0]">{v.ticket}</td>
+                      <td className="px-4 py-2 text-[#e2e8f0] whitespace-nowrap">{ruleNames[v.code] ?? v.code}</td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         {v.severity === 'critical'
-                          ? <span className="text-red-400">🔴 Critical</span>
-                          : <span className="text-yellow-400">🟡 Warning</span>}
+                          ? <span className="text-[#f87171]">🔴 Critical</span>
+                          : <span className="text-[#ffc107]">🟡 Warning</span>}
                       </td>
-                      <td className="px-4 py-2 text-gray-500">{v.auto_note}</td>
+                      <td className="px-4 py-2 text-[#475569]">{v.auto_note}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -645,13 +645,13 @@ function JournalField({ label, placeholder, value, onChange }: {
 }) {
   return (
     <div>
-      <p className="text-xs text-gray-400 font-medium mb-1.5">{label}</p>
+      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">{label}</p>
       <textarea
         value={value ?? ''}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         rows={3}
-        className="w-full bg-gray-800 border border-gray-700 text-gray-200 placeholder-gray-600 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-indigo-500 transition"
+        className="w-full bg-[#222840] border border-gray-700 text-[#e2e8f0] placeholder-[#475569] rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#3b4bc8] transition"
       />
     </div>
   )
@@ -725,21 +725,21 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex" onClick={onClose}>
       <div className="flex-1 bg-black/40" />
       <div
-        className="w-full max-w-lg bg-gray-900 border-l border-gray-800 flex flex-col shadow-2xl overflow-hidden"
+        className="w-full max-w-lg bg-[#1a1f2e] border-l border-gray-800 flex flex-col shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-800 sticky top-0 bg-gray-900 z-10 flex-shrink-0">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-800 sticky top-0 bg-[#1a1f2e] z-10 flex-shrink-0">
           <div>
             <h2 className="text-white font-bold text-base">{dateLabel}</h2>
             <p className={`text-xs mt-0.5 transition ${
-              autoStatus === 'saving' ? 'text-yellow-500' :
-              autoStatus === 'saved'  ? 'text-green-500' : 'text-gray-600'
+              autoStatus === 'saving' ? 'text-[#f7941d]' :
+              autoStatus === 'saved'  ? 'text-green-500' : 'text-[#475569]'
             }`}>
               {loading ? 'Đang tải…' : autoStatus === 'saving' ? 'Đang lưu…' : autoStatus === 'saved' ? '✓ Đã lưu' : 'Journal'}
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-2xl leading-none transition mt-0.5">×</button>
+          <button onClick={onClose} className="text-[#475569] hover:text-white text-2xl leading-none transition mt-0.5">×</button>
         </div>
 
         {/* Body */}
@@ -747,7 +747,7 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
 
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-[#3b4bc8] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
             <>
@@ -756,18 +756,18 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
                 <button
                   onClick={() => update('has_trades', !form.has_trades)}
                   className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
-                    form.has_trades ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    form.has_trades ? 'bg-[#3b4bc8] text-white' : 'bg-[#222840] text-[#94a3b8] hover:bg-[#2b3350]'
                   }`}
                 >
                   {form.has_trades ? '✓ Có lệnh hôm nay' : 'Không vào lệnh'}
                 </button>
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-600 mr-1">Confidence</span>
+                  <span className="text-xs text-[#475569] mr-1">Confidence</span>
                   {[1, 2, 3, 4, 5].map(n => (
                     <button
                       key={n}
                       onClick={() => update('confidence_score', form.confidence_score === n ? null : n)}
-                      className={`text-base transition ${(form.confidence_score ?? 0) >= n ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'}`}
+                      className={`text-base transition ${(form.confidence_score ?? 0) >= n ? 'text-[#ffc107]' : 'text-gray-700 hover:text-[#475569]'}`}
                     >●</button>
                   ))}
                 </div>
@@ -775,14 +775,14 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
 
               {/* Section 1: Context */}
               <div className="space-y-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Bối cảnh</p>
+                <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Bối cảnh</p>
                 <JournalField label="Market Overview" placeholder="Thị trường hôm nay như thế nào?" value={form.market_overview} onChange={v => update('market_overview', v || null)} />
                 <JournalField label="Strategy Decision" placeholder="Quyết định hôm nay làm gì?" value={form.strategy_decision} onChange={v => update('strategy_decision', v || null)} />
               </div>
 
               {/* Section 2: Review */}
               <div className="space-y-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Review</p>
+                <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Review</p>
                 <JournalField label="🎯 Setup & Reasoning" placeholder="Setup và lý do vào lệnh..." value={form.setup_reasoning} onChange={v => update('setup_reasoning', v || null)} />
                 <JournalField label="📈 What Went Well" placeholder="Điều gì đã làm tốt..." value={form.went_well} onChange={v => update('went_well', v || null)} />
                 <JournalField label="❌ Mistakes Made" placeholder="Lỗi nào đã mắc phải..." value={form.mistakes_made} onChange={v => update('mistakes_made', v || null)} />
@@ -794,7 +794,7 @@ function JournalPanel({ dateKey, dateLabel, accountId, onClose, onSaved }: {
         </div>
 
         {/* Save button — sticky at bottom */}
-        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-800 bg-gray-900">
+        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-800 bg-[#1a1f2e]">
           <button
             onClick={handleSaveNow}
             disabled={loading || btnStatus === 'saving'}
@@ -1050,8 +1050,8 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
 
   if (tradeHistory.length === 0) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center">
-        <p className="text-gray-500 text-sm">Chưa có dữ liệu giao dịch để phân tích</p>
+      <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-8 text-center">
+        <p className="text-[#475569] text-sm">Chưa có dữ liệu giao dịch để phân tích</p>
       </div>
     )
   }
@@ -1059,14 +1059,14 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
   return (
     <div className="space-y-4">
       {/* Chart 1 — Vi phạm + số lệnh + vi phạm/lệnh */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-white font-semibold text-sm">Vi phạm theo {PERIOD_LABELS[period].toLowerCase()}</h3>
           <div className="flex gap-1">
             {(['day','week','month'] as Period[]).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                  period === p ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  period === p ? 'bg-[#3b4bc8] text-white' : 'bg-[#222840] text-[#94a3b8] hover:bg-[#2b3350]'
                 }`}>
                 {PERIOD_LABELS[p]}
               </button>
@@ -1128,7 +1128,7 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
       </div>
 
       {/* Chart 2 — P&L */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-5">
         <h3 className="text-white font-semibold text-sm mb-4">P&amp;L theo {PERIOD_LABELS[period].toLowerCase()}</h3>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} barSize={20} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
@@ -1148,7 +1148,7 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
 
       {/* Chart 3 — Custom labels */}
       {labelPeriodData.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-5">
           <h3 className="text-white font-semibold text-sm mb-4">🏷 Nhãn tùy chỉnh theo {PERIOD_LABELS[period].toLowerCase()}</h3>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={labelPeriodData} barSize={16} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
@@ -1166,7 +1166,7 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
 
       {/* Summary card */}
       {summary && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
+        <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-5 space-y-4">
           <h3 className="text-white font-semibold text-sm">📊 Tổng kết xu hướng</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {([
@@ -1175,25 +1175,25 @@ function PerformanceView({ tradeHistory, violations, customLabels, tradeLabelMap
               { label: 'Win rate',     curr: `${summary.l4wr.toFixed(1)}%`, prev: `${summary.p4wr.toFixed(1)}%`, change: summary.l4wr - summary.p4wr },
               { label: 'P&L/tuần',    curr: `$${summary.l4pnl.toFixed(0)}`, prev: `$${summary.p4pnl.toFixed(0)}`, change: summary.l4pnl - summary.p4pnl },
             ] as { label: string; curr: string; prev: string; change: number }[]).map(item => (
-              <div key={item.label} className="bg-gray-800 rounded-xl p-3">
-                <p className="text-gray-500 text-xs mb-1">{item.label}</p>
+              <div key={item.label} className="bg-[#222840] rounded-xl p-3">
+                <p className="text-[#475569] text-xs mb-1">{item.label}</p>
                 <p className="text-white font-bold text-lg leading-none">{item.curr}</p>
-                <p className={`text-xs mt-1.5 ${item.change > 0 ? 'text-green-400' : item.change < 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                <p className={`text-xs mt-1.5 ${item.change > 0 ? 'text-[#3aaa35]' : item.change < 0 ? 'text-[#f87171]' : 'text-[#475569]'}`}>
                   {item.change > 0 ? '↑' : item.change < 0 ? '↓' : '→'} vs {item.prev}
                 </p>
               </div>
             ))}
           </div>
-          <p className="text-sm text-gray-300 bg-gray-800 rounded-xl px-4 py-3 leading-relaxed">
+          <p className="text-sm text-[#e2e8f0] bg-[#222840] rounded-xl px-4 py-3 leading-relaxed">
             {summary.conclusion}
           </p>
           {(totalPos > 0 || totalNeg > 0) && (
             <div className="flex items-center gap-3 text-xs">
-              <span className="text-green-400 font-medium">👍 {totalPos} nhãn tích cực</span>
-              <span className="text-gray-600">·</span>
-              <span className="text-red-400 font-medium">👎 {totalNeg} nhãn tiêu cực</span>
+              <span className="text-[#3aaa35] font-medium">👍 {totalPos} nhãn tích cực</span>
+              <span className="text-[#475569]">·</span>
+              <span className="text-[#f87171] font-medium">👎 {totalNeg} nhãn tiêu cực</span>
               {totalPos + totalNeg > 0 && (
-                <span className="text-gray-500">
+                <span className="text-[#475569]">
                   — {totalPos > totalNeg
                     ? `✅ ${((totalPos / (totalPos + totalNeg)) * 100).toFixed(0)}% tích cực`
                     : `📈 Cần cải thiện — ${((totalNeg / (totalPos + totalNeg)) * 100).toFixed(0)}% tiêu cực`}
@@ -1292,35 +1292,35 @@ function CustomLabelsModal({ labels, onClose, onAdd, onDelete }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1f2e] border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
           <h2 className="text-white font-bold text-base">🏷 Nhãn tùy chỉnh</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+          <button onClick={onClose} className="text-[#475569] hover:text-white text-xl leading-none transition">×</button>
         </div>
         <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
           {labels.length === 0
-            ? <p className="text-gray-600 text-sm text-center py-2">Chưa có nhãn nào</p>
+            ? <p className="text-[#475569] text-sm text-center py-2">Chưa có nhãn nào</p>
             : <div className="space-y-1.5">
                 {labels.map(l => (
-                  <div key={l.id} className="flex items-center gap-3 px-3 py-2 bg-gray-800 rounded-xl">
+                  <div key={l.id} className="flex items-center gap-3 px-3 py-2 bg-[#222840] rounded-xl">
                     <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: l.color }} />
-                    <span className="text-gray-200 text-sm flex-1 truncate">{l.name}</span>
-                    <span className="text-gray-500 text-xs">{l.type === 'positive' ? '👍' : '👎'}</span>
-                    <button onClick={() => onDelete(l.id)} className="text-gray-600 hover:text-red-400 transition text-sm">×</button>
+                    <span className="text-[#e2e8f0] text-sm flex-1 truncate">{l.name}</span>
+                    <span className="text-[#475569] text-xs">{l.type === 'positive' ? '👍' : '👎'}</span>
+                    <button onClick={() => onDelete(l.id)} className="text-[#475569] hover:text-[#f87171] transition text-sm">×</button>
                   </div>
                 ))}
               </div>
           }
           <div className="border-t border-gray-800 pt-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">+ Thêm nhãn mới</p>
+            <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">+ Thêm nhãn mới</p>
             <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()}
               placeholder="Tên nhãn..."
-              className="w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition" />
+              className="w-full bg-[#222840] border border-gray-700 text-white placeholder-[#475569] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#3b4bc8] transition" />
             <div className="flex gap-2">
               {(['positive', 'negative'] as const).map(t => (
                 <button key={t} onClick={() => { setType(t); setColor(t === 'positive' ? POSITIVE_COLORS[0]!.color : NEGATIVE_COLORS[0]!.color) }}
                   className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition ${
-                    type === t ? (t === 'positive' ? 'border-green-600 text-green-400 bg-green-900/20' : 'border-red-600 text-red-400 bg-red-900/20') : 'border-gray-700 text-gray-500 hover:border-gray-600'
+                    type === t ? (t === 'positive' ? 'border-[#3aaa35] text-[#3aaa35] bg-green-900/20' : 'border-red-600 text-[#f87171] bg-[#991b1b]/20') : 'border-gray-700 text-[#475569] hover:border-gray-600'
                   }`}>
                   {t === 'positive' ? '👍 Tích cực' : '👎 Tiêu cực'}
                 </button>
@@ -1334,7 +1334,7 @@ function CustomLabelsModal({ labels, onClose, onAdd, onDelete }: {
               ))}
             </div>
             <button onClick={handleAdd} disabled={!name.trim()}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold transition">
+              className="w-full py-2.5 rounded-full bg-[#3b4bc8] hover:bg-[#6272e0] disabled:opacity-40 text-white text-sm font-semibold transition">
               Thêm
             </button>
           </div>
@@ -1427,18 +1427,18 @@ function RulesModal({ accountId, accounts, onClose }: {
     }
   }
 
-  const ic = 'bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
+  const ic = 'bg-[#222840] border border-gray-700 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#3b4bc8] transition'
   const { value: tfValue, unit: tfUnit } = parseTF(cfg.timeframe)
   const tfMin = tfValue * (UNIT_MINS[tfUnit] ?? 1)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1f2e] border border-gray-700 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
           <h2 className="text-white font-bold text-base">⚙ Rule Setup</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+          <button onClick={onClose} className="text-[#475569] hover:text-white text-xl leading-none transition">×</button>
         </div>
 
         {/* Tabs */}
@@ -1447,7 +1447,7 @@ function RulesModal({ accountId, accounts, onClose }: {
             <button key={i}
               onClick={() => setTab((i + 1) as 1|2|3)}
               className={`flex-1 py-3 text-xs font-semibold transition ${
-                tab === i + 1 ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-gray-500 hover:text-gray-300'
+                tab === i + 1 ? 'text-[#6272e0] border-b-2 border-[#3b4bc8]' : 'text-[#475569] hover:text-[#e2e8f0]'
               }`}>
               {label}
             </button>
@@ -1458,7 +1458,7 @@ function RulesModal({ accountId, accounts, onClose }: {
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <span className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <span className="w-6 h-6 border-2 border-[#3b4bc8] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
             <>
@@ -1466,8 +1466,8 @@ function RulesModal({ accountId, accounts, onClose }: {
               {tab === 1 && (
                 <div className="space-y-5">
                   <div>
-                    <p className="text-xs text-gray-400 font-medium mb-1.5">
-                      Timeframe <span className="text-gray-600">= {tfMin.toFixed(0)} phút</span>
+                    <p className="text-xs text-[#94a3b8] font-medium mb-1.5">
+                      Timeframe <span className="text-[#475569]">= {tfMin.toFixed(0)} phút</span>
                     </p>
                     <div className="flex gap-2">
                       <input
@@ -1486,30 +1486,30 @@ function RulesModal({ accountId, accounts, onClose }: {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">R Size <span className="text-gray-600">% of balance</span></p>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">R Size <span className="text-[#475569]">% of balance</span></p>
                       <input type="number" step="0.25" min="0.01" max="10" placeholder="0.5" value={cfg.r_size_pct}
                         onChange={e => set('r_size_pct', parseFloat(e.target.value) || 1)} className={ic} />
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">Max trades/day</p>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">Max trades/day</p>
                       <input type="number" min="1" max="20" value={cfg.max_trades_day}
                         onChange={e => set('max_trades_day', parseInt(e.target.value) || 3)} className={ic} />
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">Min RR <span className="text-gray-600">(1:X)</span></p>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">Min RR <span className="text-[#475569]">(1:X)</span></p>
                       <input type="number" step="0.5" min="0.5" max="10" value={cfg.min_rr}
                         onChange={e => set('min_rr', parseFloat(e.target.value) || 2)} className={ic} />
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">
-                        Min hold <span className="text-gray-600">× TF = {(cfg.min_hold_tf * tfMin).toFixed(0)}p</span>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">
+                        Min hold <span className="text-[#475569]">× TF = {(cfg.min_hold_tf * tfMin).toFixed(0)}p</span>
                       </p>
                       <input type="number" step="0.25" min="0" value={cfg.min_hold_tf}
                         onChange={e => set('min_hold_tf', parseFloat(e.target.value) || 0)} className={ic} />
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">
-                        Max hold <span className="text-gray-600">× TF = {(cfg.max_hold_tf * tfMin).toFixed(0)}p</span>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">
+                        Max hold <span className="text-[#475569]">× TF = {(cfg.max_hold_tf * tfMin).toFixed(0)}p</span>
                       </p>
                       <input type="number" step="1" min="1" value={cfg.max_hold_tf}
                         onChange={e => set('max_hold_tf', parseFloat(e.target.value) || 10)} className={ic} />
@@ -1522,14 +1522,14 @@ function RulesModal({ accountId, accounts, onClose }: {
               {tab === 2 && (
                 <div className="space-y-5">
                   <div>
-                    <p className="text-xs text-gray-400 font-medium mb-2">Phiên giao dịch cho phép</p>
+                    <p className="text-xs text-[#94a3b8] font-medium mb-2">Phiên giao dịch cho phép</p>
                     <div className="flex gap-3">
                       {SESSION_OPTS.map(s => {
                         const on = cfg.allowed_sessions.includes(s)
                         return (
                           <button key={s} onClick={() => toggleSession(s)}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition ${
-                              on ? 'border-green-600 text-green-400 bg-green-900/20' : 'border-gray-700 text-gray-500 bg-gray-800/50 hover:border-gray-600'
+                              on ? 'border-[#3aaa35] text-[#3aaa35] bg-green-900/20' : 'border-gray-700 text-[#475569] bg-[#222840]/50 hover:border-gray-600'
                             }`}>
                             {on ? '✓' : '✗'} {s}
                           </button>
@@ -1539,27 +1539,27 @@ function RulesModal({ accountId, accounts, onClose }: {
                   </div>
                   <div className="flex items-center justify-between py-3 border-t border-gray-800">
                     <div>
-                      <p className="text-sm text-gray-300">Cho phép giao dịch cuối tuần</p>
-                      <p className="text-xs text-gray-600 mt-0.5">T7 và CN</p>
+                      <p className="text-sm text-[#e2e8f0]">Cho phép giao dịch cuối tuần</p>
+                      <p className="text-xs text-[#475569] mt-0.5">T7 và CN</p>
                     </div>
                     <button onClick={() => set('allow_weekend', !cfg.allow_weekend)}
-                      className={`w-11 h-6 rounded-full transition-colors relative ${cfg.allow_weekend ? 'bg-indigo-600' : 'bg-gray-700'}`}>
+                      className={`w-11 h-6 rounded-full transition-colors relative ${cfg.allow_weekend ? 'bg-[#3b4bc8]' : 'bg-[#2b3350]'}`}>
                       <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${cfg.allow_weekend ? 'left-6' : 'left-1'}`} />
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-4 pt-1">
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">Max thua liên tiếp</p>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">Max thua liên tiếp</p>
                       <input type="number" min="1" max="10" value={cfg.max_consec_loss}
                         onChange={e => set('max_consec_loss', parseInt(e.target.value) || 2)} className={ic} />
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">Revenge window <span className="text-gray-600">phút</span></p>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">Revenge window <span className="text-[#475569]">phút</span></p>
                       <input type="number" min="1" max="120" value={cfg.revenge_window_min}
                         onChange={e => set('revenge_window_min', parseInt(e.target.value) || 15)} className={ic} />
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400 font-medium mb-1.5">News buffer <span className="text-gray-600">phút</span></p>
+                      <p className="text-xs text-[#94a3b8] font-medium mb-1.5">News buffer <span className="text-[#475569]">phút</span></p>
                       <input type="number" min="0" max="60" value={cfg.news_buffer_min}
                         onChange={e => set('news_buffer_min', parseInt(e.target.value) || 30)} className={ic} />
                     </div>
@@ -1572,27 +1572,27 @@ function RulesModal({ accountId, accounts, onClose }: {
                 <div className="space-y-4">
                   {RULE_GROUPS.map(group => (
                     <div key={group}>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{group}</p>
+                      <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">{group}</p>
                       <div className="space-y-1">
                         {RULE_DEFS.filter(r => r.group === group).map(r => {
                           const on = cfg.rules_enabled[r.code] ?? false
                           return (
                             <div key={r.code}
-                              className={`flex items-center gap-3 px-4 py-3 rounded-xl ${r.stub ? 'opacity-40' : 'hover:bg-gray-800/50'} transition`}>
+                              className={`flex items-center gap-3 px-4 py-3 rounded-xl ${r.stub ? 'opacity-40' : 'hover:bg-[#222840]/50'} transition`}>
                               <button onClick={() => !r.stub && toggleRule(r.code)}
                                 disabled={r.stub}
-                                className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${on && !r.stub ? 'bg-indigo-600' : 'bg-gray-700'}`}>
+                                className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${on && !r.stub ? 'bg-[#3b4bc8]' : 'bg-[#2b3350]'}`}>
                                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on && !r.stub ? 'left-[18px]' : 'left-0.5'}`} />
                               </button>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`text-sm font-medium ${on && !r.stub ? 'text-gray-200' : 'text-gray-500'}`}>{r.name}</span>
+                                  <span className={`text-sm font-medium ${on && !r.stub ? 'text-[#e2e8f0]' : 'text-[#475569]'}`}>{r.name}</span>
                                   <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
-                                    r.severity === 'critical' ? 'text-red-400 bg-red-950' : 'text-yellow-400 bg-yellow-950'
+                                    r.severity === 'critical' ? 'text-[#f87171] bg-red-950' : 'text-[#ffc107] bg-yellow-950'
                                   }`}>{r.severity.toUpperCase()}</span>
-                                  {r.stub && <span className="text-gray-600 text-xs">Soon</span>}
+                                  {r.stub && <span className="text-[#475569] text-xs">Soon</span>}
                                 </div>
-                                <p className="text-gray-600 text-xs mt-0.5">{r.desc}</p>
+                                <p className="text-[#475569] text-xs mt-0.5">{r.desc}</p>
                               </div>
                             </div>
                           )
@@ -1608,12 +1608,12 @@ function RulesModal({ accountId, accounts, onClose }: {
 
         {/* Footer */}
         <div className="flex gap-3 px-6 py-4 border-t border-gray-800 flex-shrink-0">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400 text-sm font-semibold hover:border-gray-600 transition">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-full border border-gray-700 text-[#94a3b8] text-sm font-semibold hover:border-gray-600 transition">
             Hủy
           </button>
           <button onClick={handleSave} disabled={saving || done}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${
-              done ? 'bg-green-700 text-white' : 'bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white'
+            className={`flex-1 py-2.5 rounded-full text-sm font-semibold transition flex items-center justify-center gap-2 ${
+              done ? 'bg-[#1b5918] text-white' : 'bg-[#3b4bc8] hover:bg-[#6272e0] disabled:opacity-60 text-white'
             }`}>
             {done ? '✓ Đã lưu' : saving
               ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Đang lưu & rescan…</>
@@ -2103,7 +2103,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 px-4 py-8">
+    <main className="min-h-screen bg-[#0f1117] px-4 py-8">
       <div className="max-w-5xl mx-auto space-y-5">
 
         {/* Header */}
@@ -2114,7 +2114,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
           <div className="relative">
             <button
               onClick={() => setShowProfileDropdown(v => !v)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-gray-800 transition"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-[#222840] transition"
             >
               <div style={{
                 width: 32, height: 32, borderRadius: '50%',
@@ -2127,10 +2127,10 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                   ? <img src={resolveAvatar(player.avatar_url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : <span>{player?.username?.[0]?.toUpperCase() ?? '?'}</span>}
               </div>
-              <span className="text-gray-300 text-sm max-w-[80px] truncate hidden sm:block">
+              <span className="text-[#e2e8f0] text-sm max-w-[80px] truncate hidden sm:block">
                 {player?.username ?? '…'}
               </span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-gray-500 flex-shrink-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-[#475569] flex-shrink-0">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
@@ -2138,7 +2138,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             {showProfileDropdown && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowProfileDropdown(false)} />
-                <div className="absolute right-0 top-full mt-1.5 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
+                <div className="absolute right-0 top-full mt-1.5 z-50 bg-[#222840] border border-gray-700 rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
                   {([
                     { icon: '👤', label: 'Edit Profile', action: () => { openEditProfileModal(); setShowProfileDropdown(false) } },
                     { icon: '⚙️', label: 'Settings', action: () => { window.location.href = '/trading-journal/settings'; setShowProfileDropdown(false) } },
@@ -2148,7 +2148,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                     <button
                       key={item.label}
                       onClick={item.action}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition text-left"
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#e2e8f0] hover:bg-[#2b3350] hover:text-white transition text-left"
                     >
                       <span>{item.icon}</span>
                       {item.label}
@@ -2161,7 +2161,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
         </div>
 
         {/* Account bar */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+        <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-4">
 
           {/* Action row: Account selector + buttons */}
           <div className="flex items-center gap-2 mb-3 flex-wrap sm:flex-nowrap">
@@ -2171,7 +2171,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               <button
                 onClick={() => setShowAccountDropdown(v => !v)}
                 disabled={loadingAccounts}
-                className={`flex items-center gap-2 px-3 py-2 rounded-full border hover:border-gray-500 bg-gray-800 transition w-full min-w-0 disabled:opacity-50 ${
+                className={`flex items-center gap-2 px-3 py-2 rounded-full border hover:border-gray-500 bg-[#222840] transition w-full min-w-0 disabled:opacity-50 ${
                   accountSelectorHighlight ? 'border-orange-500 ring-2 ring-orange-500/30' : 'border-gray-700'
                 }`}
               >
@@ -2181,13 +2181,13 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                 }}>
                   {selectedAccount?.broker?.[0]?.toUpperCase() ?? '?'}
                 </div>
-                <span className="text-gray-200 text-sm font-medium truncate flex-1 text-left">
+                <span className="text-[#e2e8f0] text-sm font-medium truncate flex-1 text-left">
                   {loadingAccounts ? 'Loading…'
                     : selectedAccount
                       ? `${selectedAccount.display_name ?? selectedAccount.account_code} · ${selectedAccount.broker}`
                       : accounts.length === 0 ? 'Chưa có account' : 'Chọn account'}
                 </span>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-gray-500 flex-shrink-0">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-[#475569] flex-shrink-0">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
@@ -2195,13 +2195,13 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               {showAccountDropdown && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowAccountDropdown(false)} />
-                  <div className="absolute left-0 top-full mt-1.5 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl min-w-full py-1 overflow-hidden">
+                  <div className="absolute left-0 top-full mt-1.5 z-50 bg-[#222840] border border-gray-700 rounded-xl shadow-2xl min-w-full py-1 overflow-hidden">
                     {accounts.map(acc => (
                       <button
                         key={acc.id}
                         onClick={() => { setSelectedId(acc.id); setResult(null); writeSelectedAccountCookie(acc.id); setShowAccountDropdown(false) }}
                         className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition text-left ${
-                          selectedId === acc.id ? 'bg-indigo-600/20 text-indigo-300' : 'text-gray-300 hover:bg-gray-700'
+                          selectedId === acc.id ? 'bg-[#3b4bc8]/20 text-[#c7cdff]' : 'text-[#e2e8f0] hover:bg-[#2b3350]'
                         }`}
                       >
                         <div style={{
@@ -2211,13 +2211,13 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                           {acc.broker?.[0]?.toUpperCase()}
                         </div>
                         <span className="truncate flex-1">{acc.display_name ?? acc.account_code} · {acc.broker}</span>
-                        {selectedId === acc.id && <span className="text-indigo-400 flex-shrink-0">✓</span>}
+                        {selectedId === acc.id && <span className="text-[#6272e0] flex-shrink-0">✓</span>}
                       </button>
                     ))}
                     <div className="border-t border-gray-700 mt-1 pt-1">
                       <button
                         onClick={() => { setShowAddModal(true); setShowAccountDropdown(false) }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-indigo-400 hover:bg-gray-700 transition text-left"
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#6272e0] hover:bg-[#2b3350] transition text-left"
                       >
                         + Thêm account
                       </button>
@@ -2233,17 +2233,17 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                 <button
                   onClick={() => setShowAccountSettings(v => !v)}
                   title="Account settings"
-                  className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition text-base"
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-[#475569] hover:text-[#e2e8f0] hover:bg-[#222840] transition text-base"
                 >
                   ⚙
                 </button>
                 {showAccountSettings && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowAccountSettings(false)} />
-                    <div className="absolute left-0 top-full mt-1.5 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
+                    <div className="absolute left-0 top-full mt-1.5 z-50 bg-[#222840] border border-gray-700 rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
                       <button
                         onClick={() => { setShowAccountSettings(false); setDeleteConfirmChecked(false); setShowDeleteAccountModal(true) }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 transition text-left"
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#f87171] hover:bg-[#2b3350] hover:text-[#fecaca] transition text-left"
                       >
                         🗑️ Xóa tài khoản này
                       </button>
@@ -2257,7 +2257,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             <button
               onClick={() => { if (selectedId) { setError(''); setShowUploadModal(true) } }}
               disabled={!selectedId}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white transition whitespace-nowrap flex-shrink-0"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium bg-[#3b4bc8] hover:bg-[#2030a0] disabled:opacity-40 text-white transition whitespace-nowrap flex-shrink-0"
             >
               📤 Upload CSV
             </button>
@@ -2268,7 +2268,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               }}
               disabled={!selectedId}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition whitespace-nowrap flex-shrink-0 disabled:opacity-40 ${
-                journalPanel && activeView === 'timeline' ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10' : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                journalPanel && activeView === 'timeline' ? 'border-[#3b4bc8] text-[#c7cdff] bg-[#6272e0]/10' : 'border-gray-600 text-[#94a3b8] hover:border-gray-500 hover:text-[#e2e8f0]'
               }`}
             >
               📓 Daily Journal
@@ -2277,7 +2277,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               onClick={() => setActiveView(v => v === 'performance' ? 'timeline' : 'performance')}
               disabled={!selectedId}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition whitespace-nowrap flex-shrink-0 disabled:opacity-40 ${
-                activeView === 'performance' ? 'border-violet-500 text-violet-300 bg-violet-500/10' : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                activeView === 'performance' ? 'border-[#3b4bc8] text-[#c7cdff] bg-[#3b4bc8]/10' : 'border-gray-600 text-[#94a3b8] hover:border-gray-500 hover:text-[#e2e8f0]'
               }`}
             >
               📊 Performance
@@ -2285,7 +2285,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             <button
               onClick={() => { if (selectedId) setShowRulesModal(true) }}
               disabled={!selectedId}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 transition whitespace-nowrap flex-shrink-0 disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border border-gray-600 text-[#94a3b8] hover:border-gray-500 hover:text-[#e2e8f0] transition whitespace-nowrap flex-shrink-0 disabled:opacity-40"
             >
               ⚙ Rules
             </button>
@@ -2293,18 +2293,18 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
           {/* Account info strip */}
           {selectedAccount && (
-            <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-800 text-xs text-gray-400">
+            <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-800 text-xs text-[#94a3b8]">
               {selectedAccount.account_type && (
-                <span className="px-2 py-0.5 rounded bg-gray-800 text-indigo-300 font-medium">
+                <span className="px-2 py-0.5 rounded bg-[#222840] text-[#c7cdff] font-medium">
                   {selectedAccount.account_type}
                 </span>
               )}
               <span>{selectedAccount.currency} {selectedAccount.initial_balance.toLocaleString()}</span>
               {selectedAccount.daily_dd_pct != null && (
-                <span className="text-yellow-500">Daily: {selectedAccount.daily_dd_pct}%</span>
+                <span className="text-[#f7941d]">Daily: {selectedAccount.daily_dd_pct}%</span>
               )}
               {selectedAccount.total_dd_pct != null && (
-                <span className="text-orange-500">
+                <span className="text-[#f7941d]">
                   Total: {selectedAccount.total_dd_pct}%
                   {selectedAccount.dd_type ? ` ${selectedAccount.dd_type}` : ''}
                 </span>
@@ -2317,31 +2317,31 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             <div className="relative pt-3 border-t border-gray-800">
               <div className="flex flex-wrap items-center gap-0 text-xs divide-x divide-gray-800">
                 {statsLoading ? (
-                  <span className="text-gray-600 px-3">Loading stats…</span>
+                  <span className="text-[#475569] px-3">Loading stats…</span>
                 ) : accountStats ? (
                   <>
-                    <span className="text-gray-400 px-3">
-                      Trades: <span className="text-gray-200 font-medium">{accountStats.total_trades}</span>
+                    <span className="text-[#94a3b8] px-3">
+                      Trades: <span className="text-[#e2e8f0] font-medium">{accountStats.total_trades}</span>
                     </span>
-                    <span className="text-gray-400 px-3">
-                      Win Rate: <span className="text-gray-200 font-medium">
+                    <span className="text-[#94a3b8] px-3">
+                      Win Rate: <span className="text-[#e2e8f0] font-medium">
                         {accountStats.total_trades > 0
                           ? ((accountStats.win_trades / accountStats.total_trades) * 100).toFixed(1)
                           : '0.0'}%
                       </span>
                     </span>
-                    <span className="text-gray-400 px-3">
-                      P&amp;L: <span className={`font-semibold ${accountStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className="text-[#94a3b8] px-3">
+                      P&amp;L: <span className={`font-semibold ${accountStats.total_pnl >= 0 ? 'text-[#3aaa35]' : 'text-[#f87171]'}`}>
                         {accountStats.total_pnl >= 0 ? '+' : ''}${accountStats.total_pnl.toFixed(2)}
                       </span>
                     </span>
                     <span className="px-3">
                       <button
                         onClick={() => setShowViolationsBreakdown(v => !v)}
-                        className={`flex items-center gap-1 ${accountStats.violations > 0 ? 'text-yellow-500' : 'text-gray-400'} hover:opacity-80 transition`}
+                        className={`flex items-center gap-1 ${accountStats.violations > 0 ? 'text-[#f7941d]' : 'text-[#94a3b8]'} hover:opacity-80 transition`}
                       >
                         ⚠ Violations: <span className="font-medium">{accountStats.violations}</span>
-                        <span className="ml-1 text-gray-600">{showViolationsBreakdown ? '▴' : '▾'}</span>
+                        <span className="ml-1 text-[#475569]">{showViolationsBreakdown ? '▴' : '▾'}</span>
                       </button>
                     </span>
                     <span className="px-3">
@@ -2350,8 +2350,8 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                         disabled={isRescanning}
                         className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
                           scanDone
-                            ? 'bg-green-800 text-green-300'
-                            : 'bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-70 disabled:cursor-not-allowed'
+                            ? 'bg-[#1b5918] text-green-300'
+                            : 'bg-[#2b3350] hover:bg-gray-600 text-white disabled:opacity-70 disabled:cursor-not-allowed'
                         }`}
                       >
                         <span className={isRescanning ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
@@ -2373,14 +2373,14 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                 }
                 const items = Object.entries(grouped).sort((a, b) => b[1].count - a[1].count)
                 return (
-                  <div className="absolute left-0 top-full mt-1 z-30 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl min-w-56 py-1">
+                  <div className="absolute left-0 top-full mt-1 z-30 bg-[#222840] border border-gray-700 rounded-xl shadow-2xl min-w-56 py-1">
                     {items.map(([code, { name, severity, count }]) => (
-                      <div key={code} className="flex items-center justify-between px-4 py-2 text-xs hover:bg-gray-700/50">
+                      <div key={code} className="flex items-center justify-between px-4 py-2 text-xs hover:bg-[#2b3350]/50">
                         <div className="flex items-center gap-2">
                           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${severity === 'critical' ? 'bg-red-500' : 'bg-yellow-500'}`} />
-                          <span className="text-gray-200">{name}</span>
+                          <span className="text-[#e2e8f0]">{name}</span>
                         </div>
-                        <span className="text-gray-400 font-medium ml-4">{count}</span>
+                        <span className="text-[#94a3b8] font-medium ml-4">{count}</span>
                       </div>
                     ))}
                   </div>
@@ -2434,17 +2434,17 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
           }).length
 
           return (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+            <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-4 sm:px-6 py-4 border-b border-gray-800 flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 mr-auto">
                   <h2 className="text-white font-semibold">Trade History</h2>
                   <button
                     onClick={() => setShowLabelsModal(true)}
                     title="Quản lý nhãn tùy chỉnh"
-                    className="text-gray-500 hover:text-gray-300 text-sm transition"
+                    className="text-[#475569] hover:text-[#e2e8f0] text-sm transition"
                   >⚙</button>
                   {customLabels.length > 0 && (
-                    <span className="text-gray-600 text-xs">{customLabels.length} nhãn</span>
+                    <span className="text-[#475569] text-xs">{customLabels.length} nhãn</span>
                   )}
                 </div>
 
@@ -2453,7 +2453,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                   <button
                     onClick={toggleHideWeekends}
                     className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
-                      hideWeekends ? 'text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      hideWeekends ? 'text-white' : 'bg-[#222840] text-[#94a3b8] hover:bg-[#2b3350]'
                     }`}
                     style={hideWeekends ? { background: '#3b4bc8' } : {}}
                   >
@@ -2462,7 +2462,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                   <button
                     onClick={toggleOnlyTradeDays}
                     className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition ${
-                      onlyTradeDays ? 'text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      onlyTradeDays ? 'text-white' : 'bg-[#222840] text-[#94a3b8] hover:bg-[#2b3350]'
                     }`}
                     style={onlyTradeDays ? { background: '#3b4bc8' } : {}}
                   >
@@ -2470,7 +2470,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                   </button>
                 </div>
 
-                <span className="text-gray-600 text-xs flex-shrink-0">
+                <span className="text-[#475569] text-xs flex-shrink-0">
                   {tradeHistoryLoading ? 'Loading…'
                     : tradeHistory.length === 0 ? '0 lệnh'
                     : `${tradeHistory.length} lệnh · ${dayGroups.length} ngày`}
@@ -2479,10 +2479,10 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
               {tradeHistoryLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-6 h-6 border-2 border-[#3b4bc8] border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : tradeHistory.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-8">
+                <p className="text-[#475569] text-sm text-center py-8">
                   Chưa có lệnh nào — upload CSV để bắt đầu
                 </p>
               ) : (
@@ -2497,7 +2497,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                         {/* ── Day header row ── */}
                         <div className={`flex items-center px-4 py-3 gap-2 ${
                           day.trades.length === 0 ? 'opacity-60' :
-                          isNegative ? 'bg-red-900/10' : isPositive ? 'bg-green-900/10' : ''
+                          isNegative ? 'bg-[#991b1b]/10' : isPositive ? 'bg-green-900/10' : ''
                         }`}>
 
                           {/* Chevron + date label + trade count */}
@@ -2507,7 +2507,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                           >
                             {day.trades.length > 0 ? (
                               <svg
-                                className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+                                className={`w-3.5 h-3.5 text-[#475569] flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
                                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
                               >
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -2515,11 +2515,11 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                             ) : (
                               <span className="w-3.5 h-3.5 flex-shrink-0" />
                             )}
-                            <span className={`font-medium text-sm truncate ${day.trades.length === 0 ? 'text-gray-500' : 'text-gray-200'}`}>
+                            <span className={`font-medium text-sm truncate ${day.trades.length === 0 ? 'text-[#475569]' : 'text-[#e2e8f0]'}`}>
                               {day.dateLabel}
                             </span>
                             {day.trades.length > 0 && (
-                              <span className="text-gray-600 text-xs flex-shrink-0">{day.trades.length} lệnh</span>
+                              <span className="text-[#475569] text-xs flex-shrink-0">{day.trades.length} lệnh</span>
                             )}
                           </button>
 
@@ -2528,7 +2528,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
                             {/* Journal indicator */}
                             {day.journal?.lessons_learned ? (
-                              <span className="hidden sm:flex items-center gap-1 text-xs text-indigo-400 max-w-[160px]">
+                              <span className="hidden sm:flex items-center gap-1 text-xs text-[#6272e0] max-w-[160px]">
                                 <span>📝</span>
                                 <span className="truncate">{day.journal.lessons_learned.slice(0, 30)}</span>
                               </span>
@@ -2540,7 +2540,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                             {day.journal?.confidence_score != null && (
                               <span className="hidden md:flex gap-0.5">
                                 {[1,2,3,4,5].map(n => (
-                                  <span key={n} className={`text-xs ${n <= day.journal!.confidence_score! ? 'text-yellow-400' : 'text-gray-700'}`}>●</span>
+                                  <span key={n} className={`text-xs ${n <= day.journal!.confidence_score! ? 'text-[#ffc107]' : 'text-gray-700'}`}>●</span>
                                 ))}
                               </span>
                             )}
@@ -2548,22 +2548,22 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                             {/* Top 3 violation codes */}
                             {day.topCodes.map(c => (
                               <span key={c.code} className={`hidden md:inline-block px-1.5 py-0.5 rounded font-mono text-xs ${
-                                c.severity === 'critical' ? 'bg-red-900/50 text-red-300' : 'bg-yellow-900/50 text-yellow-300'
+                                c.severity === 'critical' ? 'bg-[#991b1b]/50 text-[#fecaca]' : 'bg-yellow-900/50 text-yellow-300'
                               }`}>{c.code}</span>
                             ))}
 
                             {/* Severity counts */}
                             {(day.criticalCount > 0 || day.warningCount > 0) && (
                               <span className="text-xs hidden sm:flex items-center gap-1">
-                                {day.criticalCount > 0 && <span className="text-red-400">🔴 {day.criticalCount}</span>}
-                                {day.warningCount  > 0 && <span className="text-yellow-400">🟡 {day.warningCount}</span>}
+                                {day.criticalCount > 0 && <span className="text-[#f87171]">🔴 {day.criticalCount}</span>}
+                                {day.warningCount  > 0 && <span className="text-[#ffc107]">🟡 {day.warningCount}</span>}
                               </span>
                             )}
 
                             {/* P&L (only for days with trades) */}
                             {day.trades.length > 0 && (
                               <span className={`font-semibold text-sm tabular-nums w-24 text-right ${
-                                isPositive ? 'text-green-400' : isNegative ? 'text-red-400' : 'text-gray-500'
+                                isPositive ? 'text-[#3aaa35]' : isNegative ? 'text-[#f87171]' : 'text-[#475569]'
                               }`}>
                                 {isPositive ? '+' : ''}{day.totalPnl.toFixed(2)}
                               </span>
@@ -2574,8 +2574,8 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                               onClick={e => { e.stopPropagation(); setJournalPanel(day.dateKey) }}
                               className={`text-xs transition whitespace-nowrap px-2 py-0.5 rounded ${
                                 day.journal
-                                  ? 'text-indigo-400 hover:text-indigo-300'
-                                  : 'text-gray-600 hover:text-gray-400'
+                                  ? 'text-[#6272e0] hover:text-[#c7cdff]'
+                                  : 'text-[#475569] hover:text-[#94a3b8]'
                               }`}
                             >
                               {day.journal ? '✏ Sửa' : '+ Ghi chú'}
@@ -2591,12 +2591,12 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                             transition: 'max-height 0.25s ease-in-out',
                           }}
                         >
-                          <div className="border-t border-gray-800/60 bg-gray-950/40 overflow-x-auto">
+                          <div className="border-t border-gray-800/60 bg-[#0f1117]/40 overflow-x-auto">
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="border-b border-gray-800/60">
                                   {['Ticket', 'Type', 'Symbol', 'Mở', 'Đóng', 'Pips', 'Profit', 'Violations'].map(h => (
-                                    <th key={h} className="px-4 py-2 text-left text-gray-600 font-medium whitespace-nowrap">{h}</th>
+                                    <th key={h} className="px-4 py-2 text-left text-[#475569] font-medium whitespace-nowrap">{h}</th>
                                   ))}
                                 </tr>
                               </thead>
@@ -2606,18 +2606,18 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                                   const isBuy = t.type.toLowerCase() === 'buy'
                                   const isProfit = t.profit >= 0
                                   return (
-                                    <tr key={t.ticket} className="border-b border-gray-800/30 hover:bg-gray-800/20 transition">
-                                      <td className="px-4 py-2.5 font-mono text-gray-400">{t.ticket}</td>
+                                    <tr key={t.ticket} className="border-b border-gray-800/30 hover:bg-[#222840]/20 transition">
+                                      <td className="px-4 py-2.5 font-mono text-[#94a3b8]">{t.ticket}</td>
                                       <td className="px-4 py-2.5">
                                         <span className={`px-1.5 py-0.5 rounded font-semibold ${
-                                          isBuy ? 'bg-green-900/60 text-green-400' : 'bg-red-900/60 text-red-400'
+                                          isBuy ? 'bg-green-900/60 text-[#3aaa35]' : 'bg-[#991b1b]/60 text-[#f87171]'
                                         }`}>{t.type.toUpperCase()}</span>
                                       </td>
-                                      <td className="px-4 py-2.5 text-gray-300 font-medium">{t.symbol}</td>
-                                      <td className="px-4 py-2.5 font-mono text-gray-500 whitespace-nowrap">{fmtTime(t.open_time)}</td>
-                                      <td className="px-4 py-2.5 font-mono text-gray-500 whitespace-nowrap">{fmtTime(t.close_time)}</td>
-                                      <td className="px-4 py-2.5 text-gray-400">{t.pips}</td>
-                                      <td className={`px-4 py-2.5 font-semibold ${isProfit ? 'text-green-400' : 'text-red-400'}`}>
+                                      <td className="px-4 py-2.5 text-[#e2e8f0] font-medium">{t.symbol}</td>
+                                      <td className="px-4 py-2.5 font-mono text-[#475569] whitespace-nowrap">{fmtTime(t.open_time)}</td>
+                                      <td className="px-4 py-2.5 font-mono text-[#475569] whitespace-nowrap">{fmtTime(t.close_time)}</td>
+                                      <td className="px-4 py-2.5 text-[#94a3b8]">{t.pips}</td>
+                                      <td className={`px-4 py-2.5 font-semibold ${isProfit ? 'text-[#3aaa35]' : 'text-[#f87171]'}`}>
                                         {isProfit ? '+' : ''}{Number(t.profit).toFixed(2)}
                                       </td>
                                       <td className="px-4 py-2.5">
@@ -2652,7 +2652,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                                                 setDropdownPos({ anchorTop: rect.top, anchorBottom: rect.bottom, left: rect.left, openUpward })
                                               }
                                             }}
-                                            className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white flex items-center justify-center transition flex-shrink-0"
+                                            className="w-5 h-5 rounded-full bg-[#2b3350] hover:bg-gray-600 text-[#94a3b8] hover:text-white flex items-center justify-center transition flex-shrink-0"
                                             title="Tag violation"
                                           >
                                             ＋
@@ -2662,22 +2662,22 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                                             <div className="relative flex-shrink-0">
                                               <button
                                                 onClick={() => setLabelingTicket(labelingTicket === t.ticket ? null : t.ticket)}
-                                                className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white flex items-center justify-center transition text-xs"
+                                                className="w-5 h-5 rounded-full bg-[#2b3350] hover:bg-gray-600 text-[#94a3b8] hover:text-white flex items-center justify-center transition text-xs"
                                                 title="Gắn nhãn"
                                               >🏷</button>
                                               {labelingTicket === t.ticket && (
                                                 <>
                                                   <div className="fixed inset-0 z-40" onClick={() => setLabelingTicket(null)} />
-                                                  <div className="absolute right-0 top-full mt-1 z-50 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-48 py-1 overflow-hidden">
+                                                  <div className="absolute right-0 top-full mt-1 z-50 bg-[#222840] border border-gray-700 rounded-xl shadow-2xl w-48 py-1 overflow-hidden">
                                                     {customLabels.map(lbl => {
                                                       const applied = (tradeLabelMap[t.ticket] ?? []).includes(lbl.id)
                                                       return (
                                                         <button key={lbl.id}
                                                           onClick={() => toggleTradeLabel(t.ticket, lbl.id)}
-                                                          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-gray-700 transition">
+                                                          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-[#2b3350] transition">
                                                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: lbl.color }} />
                                                           <span className="flex-1 truncate" style={{ color: lbl.color }}>{lbl.name}</span>
-                                                          {applied && <span className="text-gray-400">✓</span>}
+                                                          {applied && <span className="text-[#94a3b8]">✓</span>}
                                                         </button>
                                                       )
                                                     })}
@@ -2723,11 +2723,11 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       {/* Upload modal */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => !uploading && setShowUploadModal(false)}>
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-white font-bold text-base">Upload FTMO CSV</h3>
               {!uploading && (
-                <button onClick={() => setShowUploadModal(false)} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+                <button onClick={() => setShowUploadModal(false)} className="text-[#475569] hover:text-white text-xl leading-none transition">×</button>
               )}
             </div>
 
@@ -2744,10 +2744,10 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                 uploadSuccess
                   ? 'border-green-700 bg-green-900/20'
                   : dragging
-                  ? 'border-violet-500 bg-violet-500/10'
+                  ? 'border-[#3b4bc8] bg-[#3b4bc8]/10'
                   : uploading
-                  ? 'border-gray-700 bg-gray-800 cursor-not-allowed'
-                  : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                  ? 'border-gray-700 bg-[#222840] cursor-not-allowed'
+                  : 'border-gray-700 bg-[#222840]/50 hover:border-gray-600'
               }`}
             >
               <input
@@ -2760,25 +2760,25 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               {uploadSuccess ? (
                 <div className="flex flex-col items-center gap-2">
                   <div className="text-3xl">✓</div>
-                  <p className="text-green-400 font-semibold">{result?.tradesAdded} trades synced</p>
-                  <p className="text-gray-500 text-sm">Closing…</p>
+                  <p className="text-[#3aaa35] font-semibold">{result?.tradesAdded} trades synced</p>
+                  <p className="text-[#475569] text-sm">Closing…</p>
                 </div>
               ) : uploading ? (
                 <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-violet-400 text-sm font-medium">Uploading and processing…</p>
+                  <div className="w-8 h-8 border-2 border-[#3b4bc8] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-[#6272e0] text-sm font-medium">Uploading and processing…</p>
                 </div>
               ) : (
                 <>
                   <div className="text-3xl mb-3">📂</div>
-                  <p className="text-gray-200 font-semibold">Drop FTMO CSV here</p>
-                  <p className="text-gray-500 text-sm mt-1">or click to browse</p>
+                  <p className="text-[#e2e8f0] font-semibold">Drop FTMO CSV here</p>
+                  <p className="text-[#475569] text-sm mt-1">or click to browse</p>
                 </>
               )}
             </div>
 
             {error && (
-              <p className="mt-3 text-red-400 text-xs">{error}</p>
+              <p className="mt-3 text-[#f87171] text-xs">{error}</p>
             )}
           </div>
         </div>
@@ -2786,7 +2786,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
       {/* Success toast */}
       {uploadToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-800 text-green-200 text-sm font-medium px-5 py-2.5 rounded-full shadow-2xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1b5918] text-green-200 text-sm font-medium px-5 py-2.5 rounded-full shadow-2xl">
           {uploadToast}
         </div>
       )}
@@ -2848,11 +2848,11 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       {showEditProfileModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-0 sm:pb-4"
           onClick={() => setShowEditProfileModal(false)}>
-          <div className="bg-gray-900 border border-gray-700 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col"
+          <div className="bg-[#1a1f2e] border border-gray-700 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 flex-shrink-0">
               <h2 className="text-white font-bold text-base">Tùy chỉnh hồ sơ</h2>
-              <button onClick={() => setShowEditProfileModal(false)} className="text-gray-500 hover:text-white text-xl leading-none transition">×</button>
+              <button onClick={() => setShowEditProfileModal(false)} className="text-[#475569] hover:text-white text-xl leading-none transition">×</button>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
               {/* Preview */}
@@ -2866,7 +2866,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               </div>
               {/* Màu nền */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Màu nền</p>
+                <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">Màu nền</p>
                 <div className="flex gap-2 flex-wrap">
                   {AVATAR_BG_COLORS.map(c => (
                     <button key={c} onClick={() => setDraftAvatarBg(c)}
@@ -2876,15 +2876,15 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                 </div>
               </div>
               {avatarError && (
-                <div className="bg-red-950 border border-red-800 rounded-lg px-3 py-2 text-xs text-red-400">{avatarError}</div>
+                <div className="bg-red-950 border border-red-800 rounded-lg px-3 py-2 text-xs text-[#f87171]">{avatarError}</div>
               )}
               {/* Avatar mặc định */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Avatar mặc định</p>
+                <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">Avatar mặc định</p>
                 {avatarLoading ? (
-                  <p className="text-center text-gray-500 text-sm py-4">Đang tải...</p>
+                  <p className="text-center text-[#475569] text-sm py-4">Đang tải...</p>
                 ) : defaultAvatars.length === 0 ? (
-                  <p className="text-center text-gray-600 text-sm py-4">Không có avatar</p>
+                  <p className="text-center text-[#475569] text-sm py-4">Không có avatar</p>
                 ) : (
                   <div className="grid grid-cols-7 gap-1.5">
                     {defaultAvatars.map(filename => (
@@ -2899,9 +2899,9 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               </div>
               {/* Upload */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ảnh tùy chỉnh</p>
+                <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">Ảnh tùy chỉnh</p>
                 <label className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border border-dashed transition w-fit text-sm ${
-                  avatarUploading ? 'border-indigo-500 text-indigo-400' : 'border-gray-600 text-gray-400 hover:border-indigo-500 hover:text-indigo-400'
+                  avatarUploading ? 'border-[#3b4bc8] text-[#6272e0]' : 'border-gray-600 text-[#94a3b8] hover:border-[#3b4bc8] hover:text-[#6272e0]'
                 }`}>
                   <span>{avatarUploading ? '⏳' : '📷'}</span>
                   <span>{avatarUploading ? 'Đang upload...' : 'Upload ảnh'}</span>
@@ -2911,7 +2911,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-gray-800 flex-shrink-0">
               <button onClick={() => setShowEditProfileModal(false)}
-                className="flex-1 py-2 rounded-xl border border-gray-700 text-sm text-gray-400 font-semibold hover:border-gray-600 transition">
+                className="flex-1 py-2 rounded-full border border-gray-700 text-sm text-[#94a3b8] font-semibold hover:border-gray-600 transition">
                 Hủy
               </button>
               <button onClick={saveProfileAvatar} disabled={avatarSaving}
@@ -2928,18 +2928,18 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
       {showDeleteAccountModal && selectedAccount && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
           onClick={() => !isDeleting && setShowDeleteAccountModal(false)}>
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5"
+          <div className="bg-[#1a1f2e] border border-gray-700 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-5"
             onClick={e => e.stopPropagation()}>
             {/* Warning icon + title */}
             <div className="flex flex-col items-center gap-3 text-center">
               <span className="text-5xl">⚠️</span>
-              <h3 className="text-red-400 text-xl font-bold">Xóa tài khoản?</h3>
-              <p className="text-gray-200 font-semibold text-sm">
+              <h3 className="text-[#f87171] text-xl font-bold">Xóa tài khoản?</h3>
+              <p className="text-[#e2e8f0] font-semibold text-sm">
                 {selectedAccount.display_name ?? selectedAccount.account_code} · {selectedAccount.broker}
               </p>
             </div>
             {/* Warning text */}
-            <p className="text-gray-400 text-sm text-center leading-relaxed">
+            <p className="text-[#94a3b8] text-sm text-center leading-relaxed">
               Hành động này không thể hoàn tác. Toàn bộ dữ liệu giao dịch,
               vi phạm và journal của tài khoản này sẽ bị xóa vĩnh viễn.
             </p>
@@ -2962,7 +2962,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
                   )}
                 </div>
               </div>
-              <span className="text-gray-400 text-xs leading-relaxed">
+              <span className="text-[#94a3b8] text-xs leading-relaxed">
                 Tôi hiểu rằng dữ liệu sẽ bị xóa vĩnh viễn và không thể khôi phục
               </span>
             </label>
@@ -2971,7 +2971,7 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               <button
                 onClick={() => { setShowDeleteAccountModal(false); setDeleteConfirmChecked(false) }}
                 disabled={isDeleting}
-                className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-300 text-sm font-semibold hover:border-gray-600 transition disabled:opacity-60"
+                className="flex-1 py-2.5 rounded-full border border-gray-700 text-[#e2e8f0] text-sm font-semibold hover:border-gray-600 transition disabled:opacity-60"
               >
                 Hủy
               </button>
@@ -3032,7 +3032,7 @@ export default function TradingJournalPage() {
 
   if (sessionLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-[#0f1117] flex items-center justify-center">
         <span className="animate-spin text-white text-2xl inline-block">↻</span>
       </div>
     )

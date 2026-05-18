@@ -30,8 +30,8 @@ type Rule = {
 
 const CATEGORY_ORDER = ['Risk', 'Timing', 'Behavior', 'Drawdown']
 const SEV_COLORS: Record<string, string> = {
-  critical: 'text-red-400 bg-red-950',
-  warning:  'text-yellow-400 bg-yellow-950',
+  critical: 'text-[#f87171] bg-red-950',
+  warning:  'text-[#ffc107] bg-yellow-950',
 }
 
 // ── Edit Account Modal ────────────────────────────────────────────
@@ -93,12 +93,12 @@ function EditAccountModal({
     }
   }
 
-  const ic = 'w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition'
-  const lc = 'text-xs text-gray-400 font-medium mb-1'
+  const ic = 'w-full bg-[#222840] border border-gray-700 text-white placeholder-[#475569] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#3b4bc8] transition'
+  const lc = 'text-xs text-[#94a3b8] font-medium mb-1'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1f2e] border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h3 className="text-white font-bold text-base mb-5">Edit Account</h3>
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
@@ -114,12 +114,12 @@ function EditAccountModal({
           <div className="grid grid-cols-3 gap-3">
             <div><p className={lc}>Daily DD %</p><input type="number" step="0.1" value={dailyDdPct} onChange={e => setDailyDdPct(e.target.value)} placeholder="—" className={ic} /></div>
             <div><p className={lc}>Total DD %</p><input type="number" step="0.1" value={totalDdPct} onChange={e => setTotalDdPct(e.target.value)} placeholder="—" className={ic} /></div>
-            <div><p className={lc}>DD Type</p><div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-400">{ddType || 'None'}</div></div>
+            <div><p className={lc}>DD Type</p><div className="px-3 py-2 bg-[#222840] border border-gray-700 rounded-xl text-sm text-[#94a3b8]">{ddType || 'None'}</div></div>
           </div>
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+          {error && <p className="text-[#f87171] text-xs">{error}</p>}
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl border border-gray-700 text-gray-400 text-sm font-semibold hover:border-gray-600 transition">Cancel</button>
-            <button type="submit" disabled={saving} className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition">{saving ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-full border border-gray-700 text-[#94a3b8] text-sm font-semibold hover:border-gray-600 transition">Cancel</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2 rounded-full bg-[#3b4bc8] hover:bg-[#6272e0] disabled:opacity-60 text-white text-sm font-semibold transition">{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </form>
       </div>
@@ -157,24 +157,24 @@ function ParamEditor({ rule, onUpdated }: { rule: Rule; onUpdated: (r: Rule) => 
     }
   }
 
-  if (Object.keys(localParams).length === 0) return <span className="text-gray-600 text-xs">—</span>
+  if (Object.keys(localParams).length === 0) return <span className="text-[#475569] text-xs">—</span>
 
   return (
     <div className="flex flex-wrap gap-2">
       {Object.entries(localParams).map(([key, val]) => (
-        <label key={key} className="flex items-center gap-1 text-xs text-gray-400">
+        <label key={key} className="flex items-center gap-1 text-xs text-[#94a3b8]">
           <span className="capitalize">{key.replace(/_/g, ' ')}:</span>
           <input
             type="number"
             defaultValue={String(val)}
             step="any"
             onBlur={e => save(key, e.target.value)}
-            className="w-16 bg-gray-800 border border-gray-700 text-white rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-indigo-500"
+            className="w-16 bg-[#222840] border border-gray-700 text-white rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#3b4bc8]"
           />
-          {savedKey === key && <span className="text-green-400 text-xs">✓</span>}
+          {savedKey === key && <span className="text-[#3aaa35] text-xs">✓</span>}
         </label>
       ))}
-      {saving && <span className="text-xs text-gray-600">saving…</span>}
+      {saving && <span className="text-xs text-[#475569]">saving…</span>}
     </div>
   )
 }
@@ -243,7 +243,7 @@ function MethodSetupWizard({
   const [saving, setSaving]       = useState(false)
   const [saveResult, setSaveResult] = useState<{ rules: number; accounts: number } | null>(null)
 
-  const ic = 'bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition w-full'
+  const ic = 'bg-[#222840] border border-gray-700 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#3b4bc8] transition w-full'
 
   function toggleTF(tf: string) {
     setMethod(m => ({ ...m, timeframes: m.timeframes.includes(tf) ? m.timeframes.filter(x => x !== tf) : [...m.timeframes, tf] }))
@@ -301,12 +301,12 @@ function MethodSetupWizard({
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-white font-semibold text-lg">Phương pháp giao dịch</h2>
-          <p className="text-gray-500 text-xs mt-0.5">Cài đặt phương pháp → tự động generate rules</p>
+          <p className="text-[#475569] text-xs mt-0.5">Cài đặt phương pháp → tự động generate rules</p>
         </div>
         <button
           onClick={() => { setOpen(v => !v); if (!open) { setStep(1); setSaveResult(null) } }}
           className={`px-4 py-1.5 rounded-full text-sm font-medium border transition ${
-            open ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10' : 'border-gray-700 text-gray-400 hover:border-gray-500'
+            open ? 'border-[#3b4bc8] text-[#c7cdff] bg-[#6272e0]/10' : 'border-gray-700 text-[#94a3b8] hover:border-gray-500'
           }`}
         >
           {open ? '▲ Thu gọn' : '⚙ Cài đặt phương pháp'}
@@ -314,7 +314,7 @@ function MethodSetupWizard({
       </div>
 
       {open && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
+        <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-6 space-y-6">
           {/* Stepper */}
           <div className="flex items-center gap-2">
             {([
@@ -324,12 +324,12 @@ function MethodSetupWizard({
             ] as { n: number; label: string }[]).map((s, i) => (
               <div key={s.n} className="flex items-center gap-2">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  step === s.n ? 'bg-indigo-600 text-white' : step > s.n ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-500'
+                  step === s.n ? 'bg-[#3b4bc8] text-white' : step > s.n ? 'bg-green-700 text-white' : 'bg-[#222840] text-[#475569]'
                 }`}>
                   {step > s.n ? '✓' : s.n}
                 </div>
-                <span className={`text-xs hidden sm:block ${step === s.n ? 'text-gray-200' : 'text-gray-600'}`}>{s.label}</span>
-                {i < 2 && <div className="w-8 h-px bg-gray-800 flex-shrink-0" />}
+                <span className={`text-xs hidden sm:block ${step === s.n ? 'text-[#e2e8f0]' : 'text-[#475569]'}`}>{s.label}</span>
+                {i < 2 && <div className="w-8 h-px bg-[#222840] flex-shrink-0" />}
               </div>
             ))}
           </div>
@@ -338,12 +338,12 @@ function MethodSetupWizard({
           {step === 1 && (
             <div className="space-y-5">
               <div>
-                <p className="text-xs text-gray-400 font-medium mb-2">Khung thời gian giao dịch</p>
+                <p className="text-xs text-[#94a3b8] font-medium mb-2">Khung thời gian giao dịch</p>
                 <div className="flex flex-wrap gap-2">
                   {TIMEFRAME_OPTIONS.map(tf => (
                     <button key={tf} onClick={() => toggleTF(tf)}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                        method.timeframes.includes(tf) ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                        method.timeframes.includes(tf) ? 'bg-[#3b4bc8] text-white' : 'bg-[#222840] text-[#94a3b8] hover:bg-[#2b3350]'
                       }`}>
                       {tf}
                     </button>
@@ -360,7 +360,7 @@ function MethodSetupWizard({
                   { label: 'Revenge window (phút)',key: 'revengeWindow',  type: 'int',   step: '1',   min: 1,   max: 120 },
                 ] as { label: string; key: keyof MethodConfig; type: string; step: string; min: number; max: number }[]).map(f => (
                   <div key={f.key}>
-                    <p className="text-xs text-gray-400 font-medium mb-1.5">{f.label}</p>
+                    <p className="text-xs text-[#94a3b8] font-medium mb-1.5">{f.label}</p>
                     <input
                       type="number" step={f.step} min={f.min} max={f.max}
                       value={method[f.key] as number}
@@ -375,14 +375,14 @@ function MethodSetupWizard({
               </div>
 
               <div>
-                <p className="text-xs text-gray-400 font-medium mb-2">Phiên được phép giao dịch</p>
+                <p className="text-xs text-[#94a3b8] font-medium mb-2">Phiên được phép giao dịch</p>
                 <div className="flex gap-3">
                   {SESSION_OPTIONS.map(s => {
                     const allowed = method.allowedSessions.includes(s)
                     return (
                       <button key={s} onClick={() => toggleSession(s)}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition ${
-                          allowed ? 'border-green-600 text-green-400 bg-green-900/20' : 'border-gray-700 text-gray-500 bg-gray-800/50 hover:border-gray-600'
+                          allowed ? 'border-[#3aaa35] text-[#3aaa35] bg-green-900/20' : 'border-gray-700 text-[#475569] bg-[#222840]/50 hover:border-gray-600'
                         }`}>
                         <span>{allowed ? '✓' : '✗'}</span>{s}
                       </button>
@@ -394,7 +394,7 @@ function MethodSetupWizard({
               <div className="flex justify-end">
                 <button
                   onClick={() => { setWizardRules(generateRulesFromMethod(method)); setStep(2) }}
-                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition"
+                  className="px-6 py-2.5 rounded-full bg-[#3b4bc8] hover:bg-[#6272e0] text-white text-sm font-semibold transition"
                 >
                   Xem preview rules →
                 </button>
@@ -405,31 +405,31 @@ function MethodSetupWizard({
           {/* Step 2 */}
           {step === 2 && (
             <div className="space-y-4">
-              <p className="text-gray-400 text-sm">Rules tự động từ phương pháp của bạn. Toggle để bật/tắt từng rule.</p>
+              <p className="text-[#94a3b8] text-sm">Rules tự động từ phương pháp của bạn. Toggle để bật/tắt từng rule.</p>
               <div className="space-y-2">
                 {wizardRules.map(gr => (
                   <div key={gr.code}
                     className={`flex items-start gap-3 p-4 rounded-xl border transition ${
-                      gr.enabled ? 'border-gray-700 bg-gray-800/50' : 'border-gray-800 bg-gray-900/30 opacity-50'
+                      gr.enabled ? 'border-gray-700 bg-[#222840]/50' : 'border-gray-800 bg-[#1a1f2e]/30 opacity-50'
                     }`}
                   >
                     <button onClick={() => toggleWizardRule(gr.code)}
-                      className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 mt-0.5 ${gr.enabled ? 'bg-indigo-600' : 'bg-gray-700'}`}>
+                      className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 mt-0.5 ${gr.enabled ? 'bg-[#3b4bc8]' : 'bg-[#2b3350]'}`}>
                       <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${gr.enabled ? 'left-[18px]' : 'left-0.5'}`} />
                     </button>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-gray-200 text-sm font-medium">{gr.name}</span>
+                        <span className="text-[#e2e8f0] text-sm font-medium">{gr.name}</span>
                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                          gr.severity === 'critical' ? 'text-red-400 bg-red-950' : 'text-yellow-400 bg-yellow-950'
+                          gr.severity === 'critical' ? 'text-[#f87171] bg-red-950' : 'text-[#ffc107] bg-yellow-950'
                         }`}>{gr.severity}</span>
                         {gr.threshold !== undefined && (
-                          <span className="text-indigo-400 text-xs font-mono bg-indigo-950 px-2 py-0.5 rounded">
+                          <span className="text-[#6272e0] text-xs font-mono bg-indigo-950 px-2 py-0.5 rounded">
                             {gr.paramKey}: {gr.threshold}
                           </span>
                         )}
                       </div>
-                      <p className="text-gray-500 text-xs mt-0.5">{gr.description}</p>
+                      <p className="text-[#475569] text-xs mt-0.5">{gr.description}</p>
                       <p className="text-gray-700 text-xs font-mono mt-0.5">{gr.code}</p>
                     </div>
                   </div>
@@ -437,11 +437,11 @@ function MethodSetupWizard({
               </div>
               <div className="flex justify-between pt-2">
                 <button onClick={() => setStep(1)}
-                  className="px-4 py-2 rounded-xl border border-gray-700 text-gray-400 text-sm hover:border-gray-600 transition">
+                  className="px-4 py-2 rounded-full border border-gray-700 text-[#94a3b8] text-sm hover:border-gray-600 transition">
                   ← Quay lại
                 </button>
                 <button onClick={handleSave} disabled={saving}
-                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition flex items-center gap-2">
+                  className="px-6 py-2.5 rounded-full bg-[#3b4bc8] hover:bg-[#6272e0] disabled:opacity-60 text-white text-sm font-semibold transition flex items-center gap-2">
                   {saving
                     ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" /> Đang lưu & rescan…</>
                     : 'Lưu & Rescan tất cả accounts →'}
@@ -456,14 +456,14 @@ function MethodSetupWizard({
               <div className="w-16 h-16 rounded-full bg-green-900/30 border border-green-700 flex items-center justify-center text-3xl">✓</div>
               <div>
                 <p className="text-white font-bold text-lg">Hoàn tất!</p>
-                <p className="text-gray-400 text-sm mt-1">
+                <p className="text-[#94a3b8] text-sm mt-1">
                   Đã cập nhật <span className="text-white font-semibold">{saveResult.rules} rules</span> và rescan{' '}
                   <span className="text-white font-semibold">{saveResult.accounts} account{saveResult.accounts !== 1 ? 's' : ''}</span>
                 </p>
               </div>
               <button
                 onClick={() => { setStep(1); setSaveResult(null); setOpen(false) }}
-                className="px-6 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition"
+                className="px-6 py-2 rounded-full bg-[#222840] hover:bg-[#2b3350] text-[#e2e8f0] text-sm font-medium transition"
               >
                 Đóng
               </button>
@@ -556,10 +556,10 @@ export default function SettingsPage() {
 
   if (!authed) {
     return (
-      <main className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center">
-          <p className="text-gray-400 mb-4">Authentication required</p>
-          <a href="/trading-journal" className="text-indigo-400 hover:text-indigo-300 text-sm transition">← Back to Journal</a>
+      <main className="min-h-screen bg-[#0f1117] flex items-center justify-center px-4">
+        <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl p-8 text-center">
+          <p className="text-[#94a3b8] mb-4">Authentication required</p>
+          <a href="/trading-journal" className="text-[#6272e0] hover:text-[#c7cdff] text-sm transition">← Back to Journal</a>
         </div>
       </main>
     )
@@ -577,16 +577,16 @@ export default function SettingsPage() {
   ]
 
   return (
-    <main className="min-h-screen bg-gray-950 px-4 py-8">
+    <main className="min-h-screen bg-[#0f1117] px-4 py-8">
       <div className="max-w-5xl mx-auto space-y-8">
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-white text-2xl font-bold">Settings</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Configure rules and manage accounts</p>
+            <p className="text-[#475569] text-sm mt-0.5">Configure rules and manage accounts</p>
           </div>
-          <a href="/trading-journal" className="text-gray-400 hover:text-white text-sm transition">← Back</a>
+          <a href="/trading-journal" className="text-[#94a3b8] hover:text-white text-sm transition">← Back</a>
         </div>
 
         {/* Method Setup Wizard */}
@@ -600,23 +600,23 @@ export default function SettingsPage() {
         <section>
           <h2 className="text-white font-semibold text-lg mb-4">Rule Configuration</h2>
           {loadingRules ? (
-            <p className="text-gray-500 text-sm">Loading rules…</p>
+            <p className="text-[#475569] text-sm">Loading rules…</p>
           ) : rules.length === 0 ? (
-            <p className="text-gray-500 text-sm">No rules found in trading_rules table.</p>
+            <p className="text-[#475569] text-sm">No rules found in trading_rules table.</p>
           ) : (
             <div className="space-y-5">
               {sortedCategories.map(cat => (
                 <div key={cat}>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{cat}</p>
-                  <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                  <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">{cat}</p>
+                  <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl overflow-hidden">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-gray-800">
-                          <th className="px-4 py-3 text-left text-xs text-gray-500 font-medium w-10">Active</th>
-                          <th className="px-4 py-3 text-left text-xs text-gray-500 font-medium">Name</th>
-                          <th className="px-4 py-3 text-left text-xs text-gray-500 font-medium">Severity</th>
-                          <th className="px-4 py-3 text-left text-xs text-gray-500 font-medium">Params</th>
-                          <th className="px-4 py-3 text-left text-xs text-gray-500 font-medium hidden md:table-cell">Description</th>
+                          <th className="px-4 py-3 text-left text-xs text-[#475569] font-medium w-10">Active</th>
+                          <th className="px-4 py-3 text-left text-xs text-[#475569] font-medium">Name</th>
+                          <th className="px-4 py-3 text-left text-xs text-[#475569] font-medium">Severity</th>
+                          <th className="px-4 py-3 text-left text-xs text-[#475569] font-medium">Params</th>
+                          <th className="px-4 py-3 text-left text-xs text-[#475569] font-medium hidden md:table-cell">Description</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -625,28 +625,28 @@ export default function SettingsPage() {
                             <td className="px-4 py-3">
                               <button
                                 onClick={() => toggleRule(rule)}
-                                className={`w-9 h-5 rounded-full transition-colors relative ${rule.is_active ? 'bg-indigo-600' : 'bg-gray-700'}`}
+                                className={`w-9 h-5 rounded-full transition-colors relative ${rule.is_active ? 'bg-[#3b4bc8]' : 'bg-[#2b3350]'}`}
                                 aria-label={rule.is_active ? 'Deactivate' : 'Activate'}
                               >
                                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${rule.is_active ? 'left-4.5 translate-x-0' : 'left-0.5'}`} />
                               </button>
                             </td>
                             <td className="px-4 py-3">
-                              <p className="text-gray-200 font-medium">{rule.name}</p>
-                              <p className="text-gray-600 text-xs font-mono">{rule.code}</p>
+                              <p className="text-[#e2e8f0] font-medium">{rule.name}</p>
+                              <p className="text-[#475569] text-xs font-mono">{rule.code}</p>
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${SEV_COLORS[rule.severity] ?? 'text-gray-400 bg-gray-800'}`}>
+                              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${SEV_COLORS[rule.severity] ?? 'text-[#94a3b8] bg-[#222840]'}`}>
                                 {rule.severity}
                               </span>
                             </td>
                             <td className="px-4 py-3">
                               {rule.detect_type === 'auto'
                                 ? <ParamEditor rule={rule} onUpdated={updated => setRules(prev => prev.map(r => r.id === updated.id ? updated : r))} />
-                                : <span className="text-gray-600 text-xs">—</span>
+                                : <span className="text-[#475569] text-xs">—</span>
                               }
                             </td>
-                            <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">
+                            <td className="px-4 py-3 text-[#475569] text-xs hidden md:table-cell">
                               {rule.description ?? '—'}
                             </td>
                           </tr>
@@ -664,40 +664,40 @@ export default function SettingsPage() {
         <section>
           <h2 className="text-white font-semibold text-lg mb-4">Account Management</h2>
           {loadingAccounts ? (
-            <p className="text-gray-500 text-sm">Loading accounts…</p>
+            <p className="text-[#475569] text-sm">Loading accounts…</p>
           ) : accounts.length === 0 ? (
-            <p className="text-gray-500 text-sm">No accounts yet. Add one from the main journal page.</p>
+            <p className="text-[#475569] text-sm">No accounts yet. Add one from the main journal page.</p>
           ) : (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+            <div className="bg-[#1a1f2e] border border-gray-800 rounded-2xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
                     {['Display Name', 'Broker', 'Code', 'Type', 'Balance', 'Daily DD', 'Total DD', 'Trades', ''].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-4 py-3 text-left text-xs text-[#475569] font-medium whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {accounts.map(acc => (
                     <tr key={acc.id} className="border-b border-gray-800/50">
-                      <td className="px-4 py-3 text-gray-200 font-medium">{acc.display_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-400">{acc.broker}</td>
-                      <td className="px-4 py-3 font-mono text-gray-400 text-xs">{acc.account_code}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">{acc.account_type ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{acc.currency} {acc.initial_balance.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-yellow-500 text-xs">{acc.daily_dd_pct != null ? `${acc.daily_dd_pct}%` : '—'}</td>
-                      <td className="px-4 py-3 text-orange-500 text-xs">{acc.total_dd_pct != null ? `${acc.total_dd_pct}%` : '—'}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">{tradeCountMap[acc.id] ?? '—'}</td>
+                      <td className="px-4 py-3 text-[#e2e8f0] font-medium">{acc.display_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-[#94a3b8]">{acc.broker}</td>
+                      <td className="px-4 py-3 font-mono text-[#94a3b8] text-xs">{acc.account_code}</td>
+                      <td className="px-4 py-3 text-[#94a3b8] text-xs">{acc.account_type ?? '—'}</td>
+                      <td className="px-4 py-3 text-[#94a3b8] text-xs whitespace-nowrap">{acc.currency} {acc.initial_balance.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-[#f7941d] text-xs">{acc.daily_dd_pct != null ? `${acc.daily_dd_pct}%` : '—'}</td>
+                      <td className="px-4 py-3 text-[#f7941d] text-xs">{acc.total_dd_pct != null ? `${acc.total_dd_pct}%` : '—'}</td>
+                      <td className="px-4 py-3 text-[#94a3b8] text-xs">{tradeCountMap[acc.id] ?? '—'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setEditingAccount(acc)} className="text-xs text-indigo-400 hover:text-indigo-300 transition">Edit</button>
+                          <button onClick={() => setEditingAccount(acc)} className="text-xs text-[#6272e0] hover:text-[#c7cdff] transition">Edit</button>
                           {deleteConfirm === acc.id ? (
                             <>
-                              <button onClick={() => handleDelete(acc.id)} className="text-xs text-red-400 hover:text-red-300 transition">Confirm</button>
-                              <button onClick={() => setDeleteConfirm(null)} className="text-xs text-gray-500 hover:text-gray-300 transition">Cancel</button>
+                              <button onClick={() => handleDelete(acc.id)} className="text-xs text-[#f87171] hover:text-red-300 transition">Confirm</button>
+                              <button onClick={() => setDeleteConfirm(null)} className="text-xs text-[#475569] hover:text-[#e2e8f0] transition">Cancel</button>
                             </>
                           ) : (
-                            <button onClick={() => setDeleteConfirm(acc.id)} className="text-xs text-gray-600 hover:text-red-400 transition">Delete</button>
+                            <button onClick={() => setDeleteConfirm(acc.id)} className="text-xs text-[#475569] hover:text-[#f87171] transition">Delete</button>
                           )}
                         </div>
                       </td>

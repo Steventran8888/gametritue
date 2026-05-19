@@ -1259,23 +1259,13 @@ const NEGATIVE_COLORS = [
   { color: '#7c3aed', name: 'Lỗi hệ thống' },
 ]
 
-function loadLabelStore(accountId: string): { labels: CustomLabel[]; tradeLabelMap: Record<string, string[]> } {
-  try {
-    const raw = localStorage.getItem(`custom_labels_${accountId}`)
-    if (raw) return JSON.parse(raw)
-  } catch {}
-  return { labels: [], tradeLabelMap: {} }
-}
-function saveLabelStore(accountId: string, labels: CustomLabel[], tradeLabelMap: Record<string, string[]>) {
-  try { localStorage.setItem(`custom_labels_${accountId}`, JSON.stringify({ labels, tradeLabelMap })) } catch {}
-}
 
 // ── CustomLabelsModal ─────────────────────────────────────────────
 
 function CustomLabelsModal({ labels, onClose, onAdd, onDelete }: {
   labels: CustomLabel[]
   onClose: () => void
-  onAdd: (l: CustomLabel) => void
+  onAdd: (l: Omit<CustomLabel, 'id'>) => void
   onDelete: (id: string) => void
 }) {
   const [name, setName] = useState('')
@@ -1286,7 +1276,7 @@ function CustomLabelsModal({ labels, onClose, onAdd, onDelete }: {
   function handleAdd() {
     if (!name.trim()) return
     const def = palette.find(c => c.color === color) ?? palette[0]!
-    onAdd({ id: Date.now().toString(), name: name.trim(), type, color: def.color, colorName: def.name })
+    onAdd({ name: name.trim(), type, color: def.color, colorName: def.name })
     setName('')
   }
 
@@ -1941,12 +1931,34 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
     })()
   }, [selectedAccount?.id])
 
-  // Load custom labels from localStorage when account changes
+  // ── Label DB helpers ──────────────────────────────────────────────
+
+  async function loadCustomLabels(accountId: string) {
+    try {
+      const res = await fetch(`/api/trading-journal/labels?account_id=${accountId}`)
+      if (res.ok) setCustomLabels(await res.json() as CustomLabel[])
+    } catch {}
+  }
+
+  async function loadTradeLabels(accountId: string) {
+    try {
+      const res = await fetch(`/api/trading-journal/trade-labels?account_id=${accountId}`)
+      if (!res.ok) return
+      const assignments = await res.json() as { ticket: string; label_id: string }[]
+      const map: Record<string, string[]> = {}
+      for (const a of assignments) {
+        if (!map[a.ticket]) map[a.ticket] = []
+        map[a.ticket].push(a.label_id)
+      }
+      setTradeLabelMap(map)
+    } catch {}
+  }
+
+  // Load custom labels from DB when account changes
   useEffect(() => {
     if (!selectedId) { setCustomLabels([]); setTradeLabelMap({}); return }
-    const store = loadLabelStore(selectedId)
-    setCustomLabels(store.labels)
-    setTradeLabelMap(store.tradeLabelMap)
+    void loadCustomLabels(selectedId)
+    void loadTradeLabels(selectedId)
   }, [selectedId])
 
   function toggleDay(dateKey: string) {
@@ -1960,28 +1972,49 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
   // ── Custom labels ─────────────────────────────────────────────────
 
-  function addCustomLabel(label: CustomLabel) {
-    const newLabels = [...customLabels, label]
-    setCustomLabels(newLabels)
-    if (selectedId) saveLabelStore(selectedId, newLabels, tradeLabelMap)
+  async function addCustomLabel(label: Omit<CustomLabel, 'id'>) {
+    if (!selectedId) return
+    await fetch('/api/trading-journal/labels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: selectedId,
+        name:       label.name,
+        type:       label.type,
+        color:      label.color,
+        color_name: label.colorName,
+      }),
+    })
+    await loadCustomLabels(selectedId)
   }
-  function deleteCustomLabel(id: string) {
-    const newLabels = customLabels.filter(l => l.id !== id)
-    const newMap: Record<string, string[]> = {}
-    for (const [ticket, ids] of Object.entries(tradeLabelMap)) {
-      const filtered = ids.filter(lid => lid !== id)
-      if (filtered.length > 0) newMap[ticket] = filtered
-    }
-    setCustomLabels(newLabels)
-    setTradeLabelMap(newMap)
-    if (selectedId) saveLabelStore(selectedId, newLabels, newMap)
+
+  async function deleteCustomLabel(id: string) {
+    if (!selectedId) return
+    await fetch(`/api/trading-journal/labels?id=${id}`, { method: 'DELETE' })
+    await Promise.all([loadCustomLabels(selectedId), loadTradeLabels(selectedId)])
   }
-  function toggleTradeLabel(ticket: string, labelId: string) {
+
+  async function toggleTradeLabel(ticket: string, labelId: string) {
+    if (!selectedId) return
     const current = tradeLabelMap[ticket] ?? []
-    const next = current.includes(labelId) ? current.filter(id => id !== labelId) : [...current, labelId]
-    const newMap = { ...tradeLabelMap, [ticket]: next }
-    setTradeLabelMap(newMap)
-    if (selectedId) saveLabelStore(selectedId, customLabels, newMap)
+    const isApplied = current.includes(labelId)
+    // Optimistic update
+    setTradeLabelMap(prev => ({
+      ...prev,
+      [ticket]: isApplied ? current.filter(id => id !== labelId) : [...current, labelId],
+    }))
+    if (isApplied) {
+      await fetch(
+        `/api/trading-journal/trade-labels?account_id=${selectedId}&ticket=${encodeURIComponent(ticket)}&label_id=${labelId}`,
+        { method: 'DELETE' },
+      )
+    } else {
+      await fetch('/api/trading-journal/trade-labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: selectedId, ticket, label_id: labelId }),
+      })
+    }
   }
 
   // ── Re-scan ───────────────────────────────────────────────────────
@@ -2262,27 +2295,6 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
               📤 Upload CSV
             </button>
             <button
-              onClick={() => {
-                setActiveView('timeline')
-                if (selectedId) setJournalPanel(getDateKey(new Date().toISOString()))
-              }}
-              disabled={!selectedId}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition whitespace-nowrap flex-shrink-0 disabled:opacity-40 ${
-                journalPanel && activeView === 'timeline' ? 'border-[#3b4bc8] text-[#c7cdff] bg-[#6272e0]/10' : 'border-gray-600 text-[#94a3b8] hover:border-gray-500 hover:text-[#e2e8f0]'
-              }`}
-            >
-              📓 Daily Journal
-            </button>
-            <button
-              onClick={() => setActiveView(v => v === 'performance' ? 'timeline' : 'performance')}
-              disabled={!selectedId}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition whitespace-nowrap flex-shrink-0 disabled:opacity-40 ${
-                activeView === 'performance' ? 'border-[#3b4bc8] text-[#c7cdff] bg-[#3b4bc8]/10' : 'border-gray-600 text-[#94a3b8] hover:border-gray-500 hover:text-[#e2e8f0]'
-              }`}
-            >
-              📊 Performance
-            </button>
-            <button
               onClick={() => { if (selectedId) setShowRulesModal(true) }}
               disabled={!selectedId}
               className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border border-gray-600 text-[#94a3b8] hover:border-gray-500 hover:text-[#e2e8f0] transition whitespace-nowrap flex-shrink-0 disabled:opacity-40"
@@ -2392,6 +2404,35 @@ function Dashboard({ onLock, onLogout }: { onLock: () => void; onLogout: () => v
 
         {/* Upload result summary + violations (shown after modal closes) */}
         {result && !showUploadModal && <ResultPanel result={result} />}
+
+        {/* Tab bar — Lịch sử / Hiệu suất */}
+        {selectedAccount && (
+          <div style={{ display: 'flex', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            {([
+              { key: 'timeline'    as const, label: '📋 Lịch sử giao dịch' },
+              { key: 'performance' as const, label: '📊 Hiệu suất' },
+            ]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveView(tab.key)}
+                style={{
+                  padding: '8px 0',
+                  fontSize: 14,
+                  fontWeight: activeView === tab.key ? 600 : 400,
+                  color: activeView === tab.key ? '#3b4bc8' : '#94a3b8',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: activeView === tab.key ? '2px solid #3b4bc8' : '2px solid transparent',
+                  cursor: 'pointer',
+                  marginBottom: -1,
+                  transition: 'color 150ms ease-out, border-color 150ms ease-out',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Performance view */}
         {selectedAccount && activeView === 'performance' && (
